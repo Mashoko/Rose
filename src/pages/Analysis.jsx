@@ -79,18 +79,63 @@ const Analysis = () => {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
 
     // Mock Data
-    const employees = [
+    const [employees, setAnalysisResults] = useState([
         { id: "HIT002", name: "Jane Smith", department: "IT Services", salary: 4500, risk: "High", score: 98, explanation: "Flagged because: Employee receives full salary but has 0% biometric attendance and no academic workload logged in the system." },
         { id: "HIT045", name: "Michael Chen", department: "Physics", salary: 3200, risk: "Medium", score: 65, explanation: "Flagged because: Attendance is irregular (40%) but salary is consistent. Check for approved leave." },
         { id: "HIT089", name: "Sarah Connor", department: "Security", salary: 2800, risk: "High", score: 92, explanation: "Flagged because: Multiple biometric failures recorded and salary payments made to duplicate account." },
         { id: "HIT102", name: "John Doe", department: "Finance", salary: 5000, risk: "Low", score: 12, explanation: "Normal behavior detected." },
         { id: "HIT105", name: "Emily Blunt", department: "Arts", salary: 4100, risk: "Low", score: 5, explanation: "Normal behavior detected." },
-    ];
+    ]);
 
-    const handleUpload = () => {
+    const handleUpload = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
         setStep(2);
-        // Simulate processing
-        setTimeout(() => setStep(3), 2000);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const response = await fetch("http://localhost:8000/analyze", {
+                method: "POST",
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (result.status === "success") {
+                // Map backend data to frontend structure if needed
+                // Backend returns: [{ Monthly_Salary, Days_Present, Courses_Taught, Reconstruction_Error, Risk_Level, id, explanation }]
+                const mappedData = result.data.map(item => ({
+                    id: item.id || item.Employee_ID || item.EmployeeID || `EMP-${Math.floor(Math.random() * 10000)}`,
+                    // Support various common column names for Name
+                    name: item.fullName || item.Name || item.name || item.Employee_Name || item.EmployeeName || "Unknown Employee",
+                    // Support various common column names for Department
+                    department: item.department || item.Department || item.Dept || "Unknown",
+                    salary: item.Monthly_Salary,
+                    risk: item.Risk_Level,
+                    score: Math.round(item.Reconstruction_Error * 100), // Scale error for display
+                    explanation: item.explanation
+                }));
+                // setEmployees(mappedData); // You'd need a state for employees, currently it is hardcoded 'employees' const
+                // For this step, let's just log it or if we want to replace the list, we need to change 'employees' to state.
+                console.log("Analysis Results:", mappedData);
+                // In a real app, you would set state here. 
+                // Since 'employees' is currently a const, we should change it to state in a separate edit or assume the user wants that.
+                // raising an event or setting a state variable 'analysisResults' would be better.
+                // But to make it work 'visually' with the exiting code:
+                setAnalysisResults(mappedData);
+                setStep(3);
+            } else {
+                alert("Error processing file: " + result.error);
+                setStep(1);
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("Failed to connect to the server.");
+            setStep(1);
+        }
     };
 
     return (
@@ -106,9 +151,13 @@ const Analysis = () => {
 
             {/* Step 1: Upload */}
             {step === 1 && (
-                <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer group"
-                    onClick={handleUpload}
-                >
+                <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer group relative">
+                    <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
                     <div className="w-16 h-16 bg-blue-50 text-primary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                         <UploadCloud className="w-8 h-8" />
                     </div>
@@ -125,7 +174,7 @@ const Analysis = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
                     <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
                     <h3 className="text-lg font-bold text-gray-800">Processing Data...</h3>
-                    <p className="text-gray-500 mb-6">Running Isolation Forest Algorithm for anomaly detection.</p>
+                    <p className="text-gray-500 mb-6">Running Autoencoder Model for anomaly detection.</p>
 
                     <div className="max-w-md mx-auto space-y-3 text-sm text-left">
                         <div className="flex items-center gap-3 text-green-600">

@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+venv/
+ml_service/venv/
+.env
+.DS_Store
+
+# ML Artifacts (Optional - large files)
+# ml_service/model/

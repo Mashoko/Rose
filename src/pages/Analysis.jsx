@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UploadCloud, FileText, CheckCircle, AlertTriangle, Eye, X } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
+import ScatterPlot from '../components/ScatterPlot';
 
 // Detail Modal Component (Inline for simplicity, can be separated)
 const DetailModal = ({ employee, onClose }) => {
@@ -77,15 +78,39 @@ const DetailModal = ({ employee, onClose }) => {
 const Analysis = () => {
     const [step, setStep] = useState(1); // 1: Upload, 2: Processing, 3: Results
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [employees, setAnalysisResults] = useState([]);
+    const [scatterData, setScatterData] = useState(null);
 
-    // Mock Data
-    const [employees, setAnalysisResults] = useState([
-        { id: "HIT002", name: "Jane Smith", department: "IT Services", salary: 4500, risk: "High", score: 98, explanation: "Flagged because: Employee receives full salary but has 0% biometric attendance and no academic workload logged in the system." },
-        { id: "HIT045", name: "Michael Chen", department: "Physics", salary: 3200, risk: "Medium", score: 65, explanation: "Flagged because: Attendance is irregular (40%) but salary is consistent. Check for approved leave." },
-        { id: "HIT089", name: "Sarah Connor", department: "Security", salary: 2800, risk: "High", score: 92, explanation: "Flagged because: Multiple biometric failures recorded and salary payments made to duplicate account." },
-        { id: "HIT102", name: "John Doe", department: "Finance", salary: 5000, risk: "Low", score: 12, explanation: "Normal behavior detected." },
-        { id: "HIT105", name: "Emily Blunt", department: "Arts", salary: 4100, risk: "Low", score: 5, explanation: "Normal behavior detected." },
-    ]);
+    const saveReportToDatabase = async (mappedData, filename) => {
+        try {
+            const sum = {
+                totalAnalyzed: mappedData.length,
+                highRiskCount: mappedData.filter(e => e.risk === 'High').length,
+                mediumRiskCount: mappedData.filter(e => e.risk === 'Medium').length,
+                lowRiskCount: mappedData.filter(e => e.risk === 'Low').length,
+            };
+
+            const payload = {
+                reportName: `Analysis Run: ${filename || 'Unknown File'}`,
+                summary: sum,
+                details: mappedData
+            };
+
+            const token = localStorage.getItem('token'); // Grab token if it exists
+
+            await fetch("http://localhost:5000/api/reports", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token && { "Authorization": `Bearer ${token}` })
+                },
+                body: JSON.stringify(payload),
+            });
+            console.log("Report saved to database successfully.");
+        } catch (error) {
+            console.error("Failed to save report to database:", error);
+        }
+    };
 
     const handleUpload = async (event) => {
         const file = event.target.files?.[0];
@@ -105,27 +130,53 @@ const Analysis = () => {
             const result = await response.json();
 
             if (result.status === "success") {
-                // Map backend data to frontend structure if needed
-                // Backend returns: [{ Monthly_Salary, Days_Present, Courses_Taught, Reconstruction_Error, Risk_Level, id, explanation }]
                 const mappedData = result.data.map(item => ({
-                    id: item.id || item.Employee_ID || item.EmployeeID || `EMP-${Math.floor(Math.random() * 10000)}`,
-                    // Support various common column names for Name
-                    name: item.fullName || item.Name || item.name || item.Employee_Name || item.EmployeeName || "Unknown Employee",
-                    // Support various common column names for Department
-                    department: item.department || item.Department || item.Dept || "Unknown",
+                    id: item.id || item.Employee_ID || `EMP-${Math.floor(Math.random() * 10000)}`,
+                    name: item.Name || item.fullName || "Unknown Employee",
+                    department: item.Department || item.department || "Unknown",
                     salary: item.Monthly_Salary,
+                    daysPresent: item.Days_Present,
                     risk: item.Risk_Level,
-                    score: Math.round(item.Reconstruction_Error * 100), // Scale error for display
+                    score: Math.round(item.Reconstruction_Error * 100),
                     explanation: item.explanation
                 }));
-                // setEmployees(mappedData); // You'd need a state for employees, currently it is hardcoded 'employees' const
-                // For this step, let's just log it or if we want to replace the list, we need to change 'employees' to state.
-                console.log("Analysis Results:", mappedData);
-                // In a real app, you would set state here. 
-                // Since 'employees' is currently a const, we should change it to state in a separate edit or assume the user wants that.
-                // raising an event or setting a state variable 'analysisResults' would be better.
-                // But to make it work 'visually' with the exiting code:
+
                 setAnalysisResults(mappedData);
+
+                // Prepare Chart.js Data
+                const normalPoints = mappedData.filter(e => e.risk === 'Low').map(e => ({ x: e.daysPresent, y: e.salary, id: e.id }));
+                const mediumPoints = mappedData.filter(e => e.risk === 'Medium').map(e => ({ x: e.daysPresent, y: e.salary, id: e.id }));
+                const highPoints = mappedData.filter(e => e.risk === 'High').map(e => ({ x: e.daysPresent, y: e.salary, id: e.id }));
+
+                setScatterData({
+                    datasets: [
+                        {
+                            label: 'Normal (Low Risk)',
+                            data: normalPoints,
+                            backgroundColor: 'rgba(34, 197, 94, 0.6)', // Green
+                            borderColor: 'rgba(34, 197, 94, 1)',
+                            pointRadius: 4,
+                        },
+                        {
+                            label: 'Suspicious (Medium Risk)',
+                            data: mediumPoints,
+                            backgroundColor: 'rgba(234, 179, 8, 0.8)', // Yellow
+                            borderColor: 'rgba(234, 179, 8, 1)',
+                            pointRadius: 6,
+                        },
+                        {
+                            label: 'Anomalies (High Risk)',
+                            data: highPoints,
+                            backgroundColor: 'rgba(239, 68, 68, 1)', // Red
+                            borderColor: 'rgba(220, 38, 38, 1)',
+                            pointRadius: 8,
+                        }
+                    ]
+                });
+
+                // Auto-save the results to our MongoDB Database via Node/Express Backend
+                saveReportToDatabase(mappedData, file.name);
+
                 setStep(3);
             } else {
                 alert("Error processing file: " + result.error);
@@ -174,68 +225,77 @@ const Analysis = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
                     <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
                     <h3 className="text-lg font-bold text-gray-800">Processing Data...</h3>
-                    <p className="text-gray-500 mb-6">Running Autoencoder Model for anomaly detection.</p>
+                    <p className="text-gray-500 mb-6">Running Isolation Forest Model for anomaly detection.</p>
 
                     <div className="max-w-md mx-auto space-y-3 text-sm text-left">
                         <div className="flex items-center gap-3 text-green-600">
                             <CheckCircle className="w-4 h-4" /> Validating File Structure
                         </div>
                         <div className="flex items-center gap-3 text-green-600">
-                            <CheckCircle className="w-4 h-4" /> Cleaning & Preprocessing
+                            <CheckCircle className="w-4 h-4" /> Extracting Advanced Features
                         </div>
                         <div className="flex items-center gap-3 text-primary animate-pulse">
                             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                            Identifying Outliers
+                            Identifying Ghost Outliers
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Step 3: Results Data Grid */}
+            {/* Step 3: Results Dashboard */}
             {step === 3 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
-                                    <th className="p-4 font-semibold">ID</th>
-                                    <th className="p-4 font-semibold">Name</th>
-                                    <th className="p-4 font-semibold">Department</th>
-                                    <th className="p-4 font-semibold">Salary</th>
-                                    <th className="p-4 font-semibold">Risk Level</th>
-                                    <th className="p-4 font-semibold text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {employees.map((emp) => (
-                                    <tr key={emp.id} className={clsx("hover:bg-gray-50 transition-colors", {
-                                        "bg-red-50/50": emp.risk === 'High'
-                                    })}>
-                                        <td className="p-4 font-medium text-gray-900">{emp.id}</td>
-                                        <td className="p-4 text-gray-700">{emp.name}</td>
-                                        <td className="p-4 text-gray-500">{emp.department}</td>
-                                        <td className="p-4 text-gray-900 font-mono">${emp.salary.toLocaleString()}</td>
-                                        <td className="p-4">
-                                            <span className={clsx("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", {
-                                                "bg-red-100 text-red-800": emp.risk === 'High',
-                                                "bg-yellow-100 text-yellow-800": emp.risk === 'Medium',
-                                                "bg-green-100 text-green-800": emp.risk === 'Low',
-                                            })}>
-                                                {emp.risk}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <button
-                                                onClick={() => setSelectedEmployee(emp)}
-                                                className="text-primary hover:text-blue-800 font-medium text-sm flex items-center justify-end gap-1 ml-auto"
-                                            >
-                                                <Eye className="w-4 h-4" /> Explain
-                                            </button>
-                                        </td>
+                <div className="space-y-6">
+                    {/* Visual Analytics */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">Risk Visualization (Days Present vs. Monthly Salary)</h3>
+                        {scatterData && <ScatterPlot data={scatterData} />}
+                    </div>
+
+                    {/* Data Grid */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
+                                        <th className="p-4 font-semibold">ID</th>
+                                        <th className="p-4 font-semibold">Name</th>
+                                        <th className="p-4 font-semibold">Department</th>
+                                        <th className="p-4 font-semibold">Salary</th>
+                                        <th className="p-4 font-semibold">Risk Level</th>
+                                        <th className="p-4 font-semibold text-right">Actions</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {employees.map((emp) => (
+                                        <tr key={emp.id} className={clsx("hover:bg-gray-50 transition-colors", {
+                                            "bg-red-50/50": emp.risk === 'High'
+                                        })}>
+                                            <td className="p-4 font-medium text-gray-900">{emp.id}</td>
+                                            <td className="p-4 text-gray-700">{emp.name}</td>
+                                            <td className="p-4 text-gray-500">{emp.department}</td>
+                                            <td className="p-4 text-gray-900 font-mono">${emp.salary.toLocaleString()}</td>
+                                            <td className="p-4">
+                                                <span className={clsx("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", {
+                                                    "bg-red-100 text-red-800": emp.risk === 'High',
+                                                    "bg-yellow-100 text-yellow-800": emp.risk === 'Medium',
+                                                    "bg-green-100 text-green-800": emp.risk === 'Low',
+                                                })}>
+                                                    {emp.risk}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <button
+                                                    onClick={() => setSelectedEmployee(emp)}
+                                                    className="text-primary hover:text-blue-800 font-medium text-sm flex items-center justify-end gap-1 ml-auto"
+                                                >
+                                                    <Eye className="w-4 h-4" /> Explain
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             )}

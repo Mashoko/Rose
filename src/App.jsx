@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
+import Reports from './pages/Reports';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -38,6 +39,14 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Analysis />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/reports" element={
+            <ProtectedRoute>
+              <Layout>
+                <Reports />
               </Layout>
             </ProtectedRoute>
           } />

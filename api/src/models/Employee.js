@@ -13,6 +13,7 @@ const EmployeeSchema = new mongoose.Schema({
     isGhost: Boolean,
     anomalyScore: Number, // 0-100
     flaggedReasons: [String],
+    status: { type: String, enum: ['Pending', 'Under Investigation', 'False Positive', 'Confirmed Ghost'], default: 'Pending' }
 }, { timestamps: true });
 
 const Employee = mongoose.model('Employee', EmployeeSchema);

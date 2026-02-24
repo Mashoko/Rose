@@ -90,5 +90,6 @@ python ml_service/main.py
 ## ML Model Details
 The system uses an **Isolation Forest** anomaly detection algorithm.
 -   **Training**: Trained on "normal" employee data (e.g., standard salary, high attendance).
--   **Detection**: It calculates an anomaly score for new data. A negative score means the data point (employee) is anomalous (e.g., high salary + zero attendance).
--   **Retraining**: You can retrain the model by running `python ml_service/train_model.py`.
+-   **Detection**: It calculates an anomaly score for new data. A negative score means the data point (employee) is anomalous.
+    -   *SHAP Integration*: Anomaly insights are dynamically generated using **SHapley Additive exPlanations (SHAP)**. Instead of arbitrary thresholds, the system calculates which individual features actively pull a record into anomalous territory, offering pinpoint explanations.
+-   **Retraining**: An automated retraining pipeline handles continuous learning. You can submit verified payroll datasets via a `POST /retrain` endpoint to append new data, re-fit the Isolation Forest model, and seamlessly reload the artifacts onto the active server without downtime.

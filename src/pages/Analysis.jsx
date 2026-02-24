@@ -13,11 +13,19 @@ const Analysis = () => {
 
     const saveReportToDatabase = async (mappedData, filename) => {
         try {
+            const highRiskItems = mappedData.filter(e => e.risk === 'High');
+            const mediumRiskItems = mappedData.filter(e => e.risk === 'Medium');
+
+            const totalExposure = [...highRiskItems, ...mediumRiskItems].reduce(
+                (acc, curr) => acc + (Number(curr.salary) || 0), 0
+            );
+
             const sum = {
                 totalAnalyzed: mappedData.length,
-                highRiskCount: mappedData.filter(e => e.risk === 'High').length,
-                mediumRiskCount: mappedData.filter(e => e.risk === 'Medium').length,
+                highRiskCount: highRiskItems.length,
+                mediumRiskCount: mediumRiskItems.length,
                 lowRiskCount: mappedData.filter(e => e.risk === 'Low').length,
+                totalExposure: totalExposure
             };
 
             const payload = {
@@ -61,14 +69,14 @@ const Analysis = () => {
 
             if (result.status === "success") {
                 const mappedData = result.data.map(item => ({
-                    id: item.id || item.Employee_ID || `EMP-${Math.floor(Math.random() * 10000)}`,
-                    name: item.Name || item.fullName || "Unknown Employee",
-                    department: item.Department || item.department || "Unknown",
-                    salary: item.Monthly_Salary,
-                    daysPresent: item.Days_Present,
-                    risk: item.Risk_Level,
-                    score: Math.round(item.Reconstruction_Error * 100),
-                    explanation: item.explanation
+                    id: item.id || item.employee_id || item.Employee_ID || `EMP-${Math.floor(Math.random() * 10000)}`,
+                    name: item.name || item.Name || item.fullName || "Unknown Employee",
+                    department: item.department || item.Department || "Unknown",
+                    salary: item.salary || item.Monthly_Salary || 0,
+                    daysPresent: item.attendanceDays || item.Days_Present || 20,
+                    risk: item.Risk_Level || item.riskLevel || 'Low',
+                    score: item.Reconstruction_Error ? Math.round(item.Reconstruction_Error * 100) : 0,
+                    explanation: item.explanation || "No explanation available"
                 }));
 
                 setAnalysisResults(mappedData);
@@ -203,7 +211,7 @@ const Analysis = () => {
                                             <td className="p-4 font-medium text-gray-900">{emp.id}</td>
                                             <td className="p-4 text-gray-700">{emp.name}</td>
                                             <td className="p-4 text-gray-500">{emp.department}</td>
-                                            <td className="p-4 text-gray-900 font-mono">${emp.salary.toLocaleString()}</td>
+                                            <td className="p-4 text-gray-900 font-mono">${(emp.salary || 0).toLocaleString()}</td>
                                             <td className="p-4">
                                                 <span className={clsx("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", {
                                                     "bg-red-100 text-red-800": emp.risk === 'High',

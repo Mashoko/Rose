@@ -34,7 +34,8 @@ const ReportSchema = new mongoose.Schema({
         totalAnalyzed: Number,
         highRiskCount: Number,
         mediumRiskCount: Number,
-        lowRiskCount: Number
+        lowRiskCount: Number,
+        totalExposure: { type: Number, default: 0 }
     },
     // We can store a snapshot of the high/medium risk records natively, or all of them.
     // Storing all might become huge, but is requested for full history.
@@ -43,14 +44,55 @@ const ReportSchema = new mongoose.Schema({
 
 const Report = mongoose.model('Report', ReportSchema);
 
+// SSE Clients Array
+let clients = [];
+
+// Helper to broadcast to all SSE clients
+const broadcastNewReportEvent = () => {
+    clients.forEach(client => {
+        client.res.write(`data: ${JSON.stringify({ event: 'new_report', timestamp: Date.now() })}\n\n`);
+    });
+};
+
 
 // Routes
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+// Get all employees
 app.get('/api/employees', async (req, res) => {
     try {
         const employees = await Employee.find().sort({ riskLevel: -1 }); // High risk first
         res.json(employees);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update employee case status
+app.patch('/api/employees/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const validStatuses = ['Pending', 'Under Investigation', 'False Positive', 'Confirmed Ghost'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ error: 'Invalid status value' });
+        }
+
+        const employee = await Employee.findOneAndUpdate(
+            { employeeId: id },
+            { status: status },
+            { new: true }
+        );
+
+        if (!employee) {
+            // Fallback: try by MongoDB _id just in case
+            const empById = await Employee.findByIdAndUpdate(id, { status }, { new: true });
+            if (!empById) return res.status(404).json({ error: 'Employee not found' });
+            return res.json(empById);
+        }
+
+        res.json(employee);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -66,6 +108,10 @@ app.post('/api/reports', async (req, res) => {
             details
         });
         const savedReport = await newReport.save();
+
+        // Notify any active dashboard clients about the new report
+        broadcastNewReportEvent();
+
         res.status(201).json(savedReport);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -93,15 +139,30 @@ app.get('/api/reports/:id', async (req, res) => {
     }
 });
 
+// Real-Time SSE Endpoint
+app.get('/api/stream/reports', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const clientId = Date.now();
+    const newClient = { id: clientId, res };
+    clients.push(newClient);
+
+    req.on('close', () => {
+        clients = clients.filter(client => client.id !== clientId);
+    });
+});
 
 // Seed/Reset Endpoint for Demo
 app.post('/api/seed', async (req, res) => {
     try {
         await Employee.deleteMany({});
         const dummyData = [
-            { employeeId: "HIT001", fullName: "John Doe", department: "Finance", salary: 5000, attendanceDays: 22, biometricLogs: 22, riskLevel: "Low", isGhost: false, anomalyScore: 5 },
-            { employeeId: "HIT002", fullName: "Jane Smith", department: "IT", salary: 4500, attendanceDays: 0, biometricLogs: 0, riskLevel: "Critical", isGhost: true, anomalyScore: 98, flaggedReasons: ["0% Attendance", "No Academic Workload"] },
-            { employeeId: "HIT003", fullName: "Robert Brown", department: "Admin", salary: 3000, attendanceDays: 15, biometricLogs: 10, riskLevel: "Medium", isGhost: false, anomalyScore: 45, flaggedReasons: ["Mismatch biometric vs manual"] },
+            { employeeId: "HIT001", fullName: "John Doe", department: "Finance", salary: 5000, attendanceDays: 22, biometricLogs: 22, riskLevel: "Low", isGhost: false, anomalyScore: 5, status: "Pending" },
+            { employeeId: "HIT002", fullName: "Jane Smith", department: "IT", salary: 4500, attendanceDays: 0, biometricLogs: 0, riskLevel: "Critical", isGhost: true, anomalyScore: 98, flaggedReasons: ["0% Attendance", "No Academic Workload"], status: "Under Investigation" },
+            { employeeId: "HIT003", fullName: "Robert Brown", department: "Admin", salary: 3000, attendanceDays: 15, biometricLogs: 10, riskLevel: "Medium", isGhost: false, anomalyScore: 45, flaggedReasons: ["Mismatch biometric vs manual"], status: "False Positive" },
         ];
         await Employee.insertMany(dummyData);
         res.json({ message: "Database seeded with dummy data" });

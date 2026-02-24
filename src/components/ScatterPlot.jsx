@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
     Chart as ChartJS,
     LinearScale,
@@ -7,7 +7,7 @@ import {
     Tooltip,
     Legend,
 } from 'chart.js';
-import { Scatter } from 'react-chartjs-2';
+import { Scatter, getElementAtEvent } from 'react-chartjs-2';
 
 ChartJS.register(LinearScale, PointElement, LineElement, Tooltip, Legend);
 
@@ -48,29 +48,24 @@ export const options = {
     },
 };
 
-const ScatterPlot = ({ data }) => {
-    // Setup data format if not provided correctly, but assuming data is passed in Chart.js format
-    // Or handle transformation here.
+const ScatterPlot = ({ data, onPointClick }) => {
+    const chartRef = useRef();
 
-    // Example expected data prop structure:
-    // {
-    //   datasets: [
-    //     {
-    //       label: 'Normal Employees',
-    //       data: [{x: 20, y: 5000}, ...],
-    //       backgroundColor: 'rgba(0, 0, 128, 0.5)',
-    //     },
-    //     {
-    //       label: 'Anomalies (Ghosts)',
-    //       data: [{x: 0, y: 5000}, ...],
-    //       backgroundColor: 'rgba(255, 0, 0, 1)',
-    //     },
-    //   ],
-    // }
+    const onClick = (event) => {
+        if (!chartRef.current || !onPointClick) return;
+
+        const element = getElementAtEvent(chartRef.current, event);
+        if (element.length > 0) {
+            const datasetIndex = element[0].datasetIndex;
+            const dataIndex = element[0].index;
+            const pointData = data.datasets[datasetIndex].data[dataIndex];
+            onPointClick(pointData);
+        }
+    };
 
     return (
-        <div className="w-full h-96">
-            <Scatter options={options} data={data} />
+        <div className="w-full h-96 cursor-pointer">
+            <Scatter ref={chartRef} options={options} data={data} onClick={onClick} />
         </div>
     );
 };

@@ -1,13 +1,14 @@
 # GEMS - Ghost Employee Management System
 
 ## Overview
-GEMS is a comprehensive system designed to detect and manage "Ghost Employees" within an organization. It leverages Machine Learning (Autoencoder) to analyze payroll and attendance data, identifying anomalies that may indicate fraudulent activity.
+
+ML - Ghost Employee Detection  is a full-stack web application designed to detect and flag potential "ghost employees" within an organization's payroll and HR datasets. Utilizing a Machine Learning pipeline powered by a TensorFlow Autoencoder, GEMS analyzes employee data encompassing monthly salaries, attendance records, and other metrics to identify anomalous patterns. The system features a responsive React dashboard for visualizing system status, uploading data for analysis, and generating detailed risk reports to help organizations maintain payroll integrity.
 
 ## Features
 - **Dashboard**: Visual overview of system status and recent alerts.
 - **Analysis & Detection**: Upload payroll/attendance CSVs to detect anomalies using ML.
 - **Reports**: Generate and view detailed reports on flagged employees.
-- **ML-Powered Detection**: Uses a TensorFlow Autoencoder to learn normal employee behavior and flag deviations.
+- **ML-Powered Detection**: Uses an Isolation Forest algorithm to learn normal employee behavior and flag deviations.
 
 ## Technology Stack
 - **Frontend**: React (Vite), Tailwind CSS, Lucide React
@@ -87,7 +88,7 @@ python ml_service/main.py
 4.  **View Results**: The system will display a table of employees with their "Risk Level" (Low, Medium, High).
 
 ## ML Model Details
-The system uses an **Autoencoder** neural network.
+The system uses an **Isolation Forest** anomaly detection algorithm.
 -   **Training**: Trained on "normal" employee data (e.g., standard salary, high attendance).
--   **Detection**: It attempts to reconstruct new data. High "Reconstruction Error" means the data point (employee) is anomalous (e.g., high salary + zero attendance).
+-   **Detection**: It calculates an anomaly score for new data. A negative score means the data point (employee) is anomalous (e.g., high salary + zero attendance).
 -   **Retraining**: You can retrain the model by running `python ml_service/train_model.py`.

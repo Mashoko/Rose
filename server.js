@@ -13,38 +13,18 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Connection string from prompt
-const MONGO_URI = "mongodb+srv://tanakamashoko02_db_user:SlWaJhxX7ofDlDN8@geds.vfjgwpc.mongodb.net/?appName=GEDS";
+// Connection string from environment variables
+const MONGO_URI = process.env.MONGO_URI;
 
 mongoose.connect(MONGO_URI)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => console.error('MongoDB Connection Error:', err));
 
-// Employee Schema (Tentative - based on requirements)
-const EmployeeSchema = new mongoose.Schema({
-    employeeId: String,
-    fullName: String,
-    department: String,
-    role: String,
-    salary: Number,
-    attendanceDays: Number, // out of ~22
-    biometricLogs: Number,
-    lastActive: Date,
-    riskLevel: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'] },
-    isGhost: Boolean,
-    anomalyScore: Number, // 0-100
-    flaggedReasons: [String],
-}, { timestamps: true });
-
-const Employee = mongoose.model('Employee', EmployeeSchema);
-
-// User Schema
-const UserSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
-});
-
-const User = mongoose.model('User', UserSchema);
+// Models are now imported
+import Employee from './api/src/models/Employee.js';
+import User from './api/src/models/User.js';
+import ReportBatch from './api/src/models/ReportBatch.js';
+import ReportRecord from './api/src/models/ReportRecord.js';
 
 // Analysis Report Schema
 const ReportSchema = new mongoose.Schema({

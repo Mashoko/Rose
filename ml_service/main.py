@@ -42,6 +42,7 @@ class EmployeeRecord(BaseModel):
     email: Optional[str] = Field(default=None, alias='email')
     phone_number: Optional[str] = Field(default=None, alias='phone_number')
     salary: float = Field(alias='salary')
+    days_present: Optional[float] = Field(default=None, alias='Days_Present')
 
     model_config = ConfigDict(extra='ignore', populate_by_name=True)
 
@@ -107,13 +108,40 @@ def get_dynamic_shap_explanation(row_idx, shap_vals, feature_names):
     return " Anomalous pattern detected across multiple features."
 
 @app.post("/analyze")
-async def analyze_file(file: UploadFile = File(...)):
+async def analyze_file(payroll_file: UploadFile = File(...), attendance_file: UploadFile = File(...)):
     if model is None:
         return {"status": "error", "error": "Model not loaded"}
 
     try:
-        contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
+        async def read_df(upload_file):
+            contents = await upload_file.read()
+            filename = upload_file.filename.lower()
+            if filename.endswith(".xlsx") or filename.endswith(".xls"):
+                return pd.read_excel(io.BytesIO(contents))
+            return pd.read_csv(io.BytesIO(contents))
+
+        df_payroll = await read_df(payroll_file)
+        df_attendance = await read_df(attendance_file)
+
+        def find_id_col(df):
+            for col in ['employee_id', 'Employee_ID', 'id', 'ID']:
+                if col in df.columns:
+                    return col
+            return None
+
+        pay_id_col = find_id_col(df_payroll)
+        att_id_col = find_id_col(df_attendance)
+
+        if not pay_id_col or not att_id_col:
+             # Try to just use the first column if names don't match exactly, or just assume employee_id
+             return {"status": "error", "error": "Could not find an employee ID column in one or both files."}
+
+        df_payroll = df_payroll.rename(columns={pay_id_col: 'employee_id'})
+        df_attendance = df_attendance.rename(columns={att_id_col: 'employee_id'})
+
+        # Merge datasets
+        df = pd.merge(df_payroll, df_attendance, on='employee_id', how='left')
+
         # Optional: standardize common columns like in training
         if 'date_of_hiring' in df.columns:
             df = df.rename(columns={'date_of_hiring': 'hire_date'})
@@ -121,7 +149,7 @@ async def analyze_file(file: UploadFile = File(...)):
             df = df.rename(columns={'job_title': 'job_titles'})
             
     except Exception as e:
-        return {"status": "error", "error": f"Failed to read CSV: {str(e)}"}
+        return {"status": "error", "error": f"Failed to read or merge files: {str(e)}"}
     
     records = df.to_dict(orient='records')
     validated_data = []
@@ -174,7 +202,7 @@ async def analyze_file(file: UploadFile = File(...)):
     valid_df['id'] = valid_df['employee_id']
     valid_df['employeeId'] = valid_df['employee_id']
     valid_df['fullName'] = valid_df['name']
-    valid_df['attendanceDays'] = 20 # Mock implementation since 'Days_Present' is missing
+    valid_df['attendanceDays'] = valid_df['Days_Present'].fillna(20) # Use merged attendance data, default 20 if missing
     valid_df['isGhost'] = valid_df['Anomaly'].apply(lambda x: True if x == -1 else False)
 
     # Dynamic SHAP explanations

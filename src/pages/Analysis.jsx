@@ -10,6 +10,8 @@ const Analysis = () => {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [employees, setAnalysisResults] = useState([]);
     const [scatterData, setScatterData] = useState(null);
+    const [payrollFile, setPayrollFile] = useState(null);
+    const [attendanceFile, setAttendanceFile] = useState(null);
 
     const saveReportToDatabase = async (mappedData, filename) => {
         try {
@@ -50,14 +52,17 @@ const Analysis = () => {
         }
     };
 
-    const handleUpload = async (event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+    const handleAnalyze = async () => {
+        if (!payrollFile || !attendanceFile) {
+            alert("Please upload both Payroll and Attendance files.");
+            return;
+        }
 
         setStep(2);
 
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("payroll_file", payrollFile);
+        formData.append("attendance_file", attendanceFile);
 
         try {
             const response = await fetch("http://localhost:8000/analyze", {
@@ -113,7 +118,7 @@ const Analysis = () => {
                 });
 
                 // Auto-save the results to our MongoDB Database via Node/Express Backend
-                saveReportToDatabase(mappedData, file.name);
+                saveReportToDatabase(mappedData, `${payrollFile.name} & ${attendanceFile.name}`);
 
                 setStep(3);
             } else {
@@ -132,7 +137,7 @@ const Analysis = () => {
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-900">Analysis & Detection</h1>
                 {step === 3 && (
-                    <button onClick={() => setStep(1)} className="text-sm text-primary hover:underline">
+                    <button onClick={() => { setStep(1); setPayrollFile(null); setAttendanceFile(null); }} className="text-sm text-primary hover:underline">
                         Start New Analysis
                     </button>
                 )}
@@ -140,21 +145,48 @@ const Analysis = () => {
 
             {/* Step 1: Upload */}
             {step === 1 && (
-                <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer group relative">
-                    <input
-                        type="file"
-                        accept=".csv"
-                        onChange={handleUpload}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <div className="w-16 h-16 bg-blue-50 text-primary rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <UploadCloud className="w-8 h-8" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                    {/* Payroll Upload */}
+                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer group relative">
+                        <input
+                            type="file"
+                            accept=".csv, .xlsx, .xls"
+                            onChange={(e) => setPayrollFile(e.target.files?.[0])}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="w-12 h-12 bg-blue-50 text-primary rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                            <FileText className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">Upload Payroll</h3>
+                        <p className="text-sm text-gray-500 mb-2">.csv, .xlsx</p>
+                        {payrollFile && <p className="text-sm font-semibold text-primary">{payrollFile.name}</p>}
                     </div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">Upload Payroll & Attendance Data</h3>
-                    <p className="text-gray-500 max-w-sm">
-                        Drag and drop your Excel/CSV files here, or click to browse.
-                        Supported: .csv, .xlsx
-                    </p>
+
+                    {/* Attendance Upload */}
+                    <div className="border-2 border-dashed border-gray-300 rounded-2xl p-8 flex flex-col items-center justify-center text-center hover:border-primary transition-colors cursor-pointer group relative">
+                        <input
+                            type="file"
+                            accept=".csv, .xlsx, .xls"
+                            onChange={(e) => setAttendanceFile(e.target.files?.[0])}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="w-12 h-12 bg-blue-50 text-primary rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                            <UploadCloud className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">Upload Attendance</h3>
+                        <p className="text-sm text-gray-500 mb-2">.csv, .xlsx</p>
+                        {attendanceFile && <p className="text-sm font-semibold text-primary">{attendanceFile.name}</p>}
+                    </div>
+
+                    <div className="md:col-span-2 flex justify-center mt-4">
+                        <button
+                            onClick={handleAnalyze}
+                            disabled={!payrollFile || !attendanceFile}
+                            className={`px-8 py-3 rounded-xl font-bold text-white transition-all ${(!payrollFile || !attendanceFile) ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md hover:shadow-lg'}`}
+                        >
+                            Analyze Data
+                        </button>
+                    </div>
                 </div>
             )}
 

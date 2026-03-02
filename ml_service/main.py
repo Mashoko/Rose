@@ -37,14 +37,14 @@ except Exception as e:
 # Pydantic Schema for Input Validation
 class EmployeeRecord(BaseModel):
     employee_id: Union[str, int] = Field(alias='employee_id')
-    name: str = Field(alias='name')
-    department: str = Field(alias='department')
-    email: Optional[str] = Field(default=None, alias='email')
-    phone_number: Optional[str] = Field(default=None, alias='phone_number')
+    name: Union[str, int, float] = Field(alias='name')
+    department: Union[str, int, float] = Field(alias='department')
+    email: Optional[Union[str, int, float]] = Field(default=None, alias='email')
+    phone_number: Optional[Union[str, int, float]] = Field(default=None, alias='phone_number')
     salary: float = Field(alias='salary')
     days_present: Optional[float] = Field(default=None, alias='Days_Present')
 
-    model_config = ConfigDict(extra='ignore', populate_by_name=True)
+    model_config = ConfigDict(extra='ignore', populate_by_name=True, coerce_numbers_to_str=True)
 
 @app.get("/")
 def read_root():
@@ -56,11 +56,11 @@ def engineer_features(df_in):
     """
     df_engineered = df_in.copy()
     
-    df_engineered['email_filled'] = df_engineered['email'].copy()
+    df_engineered['email_filled'] = df_engineered['email'].astype(object)
     mask_email = df_engineered['email_filled'].isna()
     df_engineered.loc[mask_email, 'email_filled'] = 'unknown_email_' + df_engineered.index[mask_email].astype(str)
     
-    df_engineered['phone_filled'] = df_engineered['phone_number'].copy()
+    df_engineered['phone_filled'] = df_engineered['phone_number'].astype(object)
     mask_phone = df_engineered['phone_filled'].isna()
     df_engineered.loc[mask_phone, 'phone_filled'] = 'unknown_phone_' + df_engineered.index[mask_phone].astype(str)
     

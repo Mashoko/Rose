@@ -9,11 +9,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def engineer_features(df_in):
     df_engineered = df_in.copy()
     
-    df_engineered['email_filled'] = df_engineered['email'].copy()
+    df_engineered['email_filled'] = df_engineered['email'].astype(object)
     mask_email = df_engineered['email_filled'].isna()
     df_engineered.loc[mask_email, 'email_filled'] = 'unknown_email_' + df_engineered.index[mask_email].astype(str)
     
-    df_engineered['phone_filled'] = df_engineered['phone_number'].copy()
+    df_engineered['phone_filled'] = df_engineered['phone_number'].astype(object)
     mask_phone = df_engineered['phone_filled'].isna()
     df_engineered.loc[mask_phone, 'phone_filled'] = 'unknown_phone_' + df_engineered.index[mask_phone].astype(str)
     

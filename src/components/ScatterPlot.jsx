@@ -24,7 +24,9 @@ export const options = {
         tooltip: {
             callbacks: {
                 label: (context) => {
-                    return `ID: ${context.raw.id || 'N/A'} - Sal: $${context.raw.y}, Days: ${context.raw.x}`;
+                    const roundsal = Math.round(context.raw.y);
+                    const rounddays = Math.round(context.raw.x);
+                    return `ID: ${context.raw.id || 'N/A'} - Sal: $${roundsal}, Days: ${rounddays}`;
                 }
             }
         }

@@ -7,6 +7,7 @@ ML - Ghost Employee Detection  is a full-stack web application designed to detec
 ## Features
 - **Dashboard**: Visual overview of system status and recent alerts.
 - **Analysis & Detection**: Upload payroll/attendance CSVs to detect anomalies using ML.
+- **Audit Card**: Click an employee row or scatter point to open a detailed audit card that includes a historical attendance/risk graph and a button to download that employee's monthly records as a CSV.
 - **Reports**: Generate and view detailed reports on flagged employees.
 - **ML-Powered Detection**: Uses an Isolation Forest algorithm to learn normal employee behavior and flag deviations.
 
@@ -86,6 +87,8 @@ python ml_service/main.py
 3.  **Upload Data**: Upload a CSV file containing `Monthly_Salary`, `Days_Present`, and `Courses_Taught`.
     -   *Note*: The system also supports `Name` or `Employee_Name` and `Department` columns for better reporting.
 4.  **View Results**: The system will display a table of employees with their "Risk Level" (Low, Medium, High).
+
+    -  **Historical Records**: From the result table or scatter plot, click on a row/point to open the audit card. The card will render a trend line of the selected employee's monthly attendance and risk score. Click **"View Historical Records (CSV)"** to download the raw monthly data straight from the database. The frontend does not display the full table — it is only retrievable via CSV to keep the interface focused.
 
 ## ML Model Details
 The system uses an **Isolation Forest** anomaly detection algorithm.

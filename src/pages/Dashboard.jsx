@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import StatusCard from '../components/StatusCard';
-import ScatterPlot from '../components/ScatterPlot';
 import DetailModal from '../components/DetailModal';
 import { fetchEmployees, fetchReports } from '../services/api';
 import { Users, AlertTriangle, DollarSign, Activity, List as ListIcon, TrendingUp, Eye } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
+import { Line, Bar, Pie } from 'react-chartjs-2';
 import { AnimatePresence } from 'framer-motion';
 import {
     Chart as ChartJS,
@@ -12,6 +12,8 @@ import {
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
+    ArcElement,
     Title,
     Tooltip,
     Legend
@@ -22,6 +24,8 @@ ChartJS.register(
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
+    ArcElement,
     Title,
     Tooltip,
     Legend
@@ -29,6 +33,8 @@ ChartJS.register(
 
 const Dashboard = () => {
     // 1. State Management
+    const navigate = useNavigate();
+    const tableRef = useRef(null);
     const [employees, setEmployees] = useState([]);
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -37,6 +43,8 @@ const Dashboard = () => {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [filterDept, setFilterDept] = useState('All');
     const [filterRisk, setFilterRisk] = useState('All');
+
+    // no global historical records state needed on dashboard
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
@@ -56,6 +64,9 @@ const Dashboard = () => {
                 else setError("Failed to fetch data from the server.");
 
                 if (reportData) setReports(reportData);
+
+                // historical records are no longer fetched globally; will be requested per employee when
+                // the audit card/modal is opened.  (You can remove the state defined above if unused.)
             } catch (err) {
                 setError("An error occurred while fetching dashboard data.");
             } finally {
@@ -106,38 +117,115 @@ const Dashboard = () => {
 
     // 4. Dynamic Calculations (Metrics)
     // Adjust properties to match EmployeeSchema (isGhost, salary, attendanceDays, etc)
-    const totalRecords = filteredEmployees.length;
+    const totalRecords = employees.length; // Total analyzed by ML model (unfiltered)
+    const confirmedGhosts = employees.filter(emp => emp.status === 'Confirmed Ghost').length;
     const anomalies = filteredEmployees.filter(emp => emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical');
     const normalEmployees = filteredEmployees.filter(emp => emp.isGhost !== true && emp.riskLevel !== 'High' && emp.riskLevel !== 'Critical');
 
     const totalLoss = anomalies.reduce((sum, emp) => sum + (Number(emp.salary) || 0), 0);
 
+    // extra metrics for a more comprehensive dashboard
+    const totalReports = reports.length;
+    const avgSalary = employees.length
+        ? employees.reduce((sum, e) => sum + (Number(e.salary) || 0), 0) / employees.length
+        : 0;
+    const departmentCount = new Set(employees.map(e => e.department).filter(Boolean)).size;
+
     // 4. Format Data for Chart.js Scatter Plot
-    const scatterData = {
+
+    // risk breakdown for bar chart
+    const riskCounts = { Low: 0, Medium: 0, High: 0, Critical: 0 };
+    employees.forEach(emp => {
+        if (riskCounts[emp.riskLevel] !== undefined) {
+            riskCounts[emp.riskLevel] += 1;
+        }
+    });
+    const riskChartData = {
+        labels: Object.keys(riskCounts),
         datasets: [
             {
-                label: 'Normal Employees',
-                data: normalEmployees.map(emp => ({
-                    x: emp.attendanceDays || 0,
-                    y: emp.salary || 0,
-                    id: emp.id || emp.employeeId,
-                    rawEmp: emp
-                })),
-                backgroundColor: 'rgba(0, 0, 128, 0.6)', // Navy
-            },
-            {
-                label: 'Suspected Ghosts',
-                data: anomalies.map(emp => ({
-                    x: emp.attendanceDays || 0,
-                    y: emp.salary || 0,
-                    id: emp.id || emp.employeeId,
-                    rawEmp: emp
-                })),
-                backgroundColor: 'rgba(255, 0, 0, 1)', // Red
-                pointRadius: 6,
-            },
-        ],
+                label: 'Employees',
+                data: Object.values(riskCounts),
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.6)', // green low
+                    'rgba(234, 179, 8, 0.6)', // yellow medium
+                    'rgba(239, 68, 68, 0.6)', // red high
+                    'rgba(126, 34, 206, 0.6)' // purple critical
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(234, 179, 8, 1)',
+                    'rgba(239, 68, 68, 1)',
+                    'rgba(126, 34, 206, 1)'
+                ],
+                borderWidth: 1
+            }
+        ]
     };
+    const riskChartOptions = {
+        responsive: true,
+        plugins: { legend: { position: 'top' }, title: { display: true, text: 'Risk Level Distribution' } }
+    };
+    
+    // Pie chart data showing risk level distribution
+    const pieData = {
+        labels: ['Low Risk', 'Medium Risk', 'High Risk', 'Critical Risk'],
+        datasets: [
+            {
+                label: 'Employee Count',
+                data: [
+                    riskCounts.Low || 0,
+                    riskCounts.Medium || 0,
+                    riskCounts.High || 0,
+                    riskCounts.Critical || 0
+                ],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.7)',  // Green for Low
+                    'rgba(234, 179, 8, 0.7)',  // Yellow for Medium
+                    'rgba(239, 68, 68, 0.7)',  // Red for High
+                    'rgba(126, 34, 206, 0.7)'  // Purple for Critical
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(234, 179, 8, 1)',
+                    'rgba(239, 68, 68, 1)',
+                    'rgba(126, 34, 206, 1)'
+                ],
+                borderWidth: 2
+            }
+        ]
+    };
+    
+    const pieOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: {
+                    padding: 15,
+                    font: { size: 12 }
+                }
+            },
+            title: {
+                display: true,
+                text: 'Risk Level Distribution',
+                font: { size: 16, weight: 'bold' }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        const label = context.label || '';
+                        const value = context.parsed || 0;
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                        return `${label}: ${value} employees (${percentage}%)`;
+                    }
+                }
+            }
+        }
+    };
+
 
     const handlePointClick = (point) => {
         if (point && point.rawEmp) {
@@ -148,6 +236,27 @@ const Dashboard = () => {
                 risk: point.rawEmp.riskLevel,
                 score: point.rawEmp.anomalyScore,
             };
+            
+            // Add determination for ALL employees based on risk level
+            const riskMap = {
+                'Low': 'NORMAL EMPLOYEE',
+                'Medium': 'MEDIUM RISK ALERT',
+                'High': 'HIGH RISK ANOMALY',
+                'Critical': 'CRITICAL RISK - GHOST EMPLOYEE'
+            };
+            
+            mappedEmp.determination = {
+                classification: riskMap[point.rawEmp.riskLevel] || 'UNCLASSIFIED',
+                confidence: point.rawEmp.anomalyScore || 0,
+                reasoning: [
+                    `Risk Level: ${point.rawEmp.riskLevel || 'Unknown'}`,
+                    point.rawEmp.attendanceDays !== undefined ? `Attendance: ${Math.round(point.rawEmp.attendanceDays)} days` : null,
+                    point.rawEmp.salary ? `Salary: $${Math.round(point.rawEmp.salary).toLocaleString()}` : null,
+                    point.rawEmp.biometricLogs !== undefined ? `Biometric Logs: ${point.rawEmp.biometricLogs}` : null,
+                    point.rawEmp.isGhost ? 'Status: Flagged as potential ghost employee' : null
+                ].filter(Boolean)
+            };
+            
             setSelectedEmployee(mappedEmp);
         }
     };
@@ -159,6 +268,27 @@ const Dashboard = () => {
             risk: emp.riskLevel,
             score: emp.anomalyScore,
         };
+        
+        // Add determination for ALL employees based on risk level
+        const riskMap = {
+            'Low': 'NORMAL EMPLOYEE',
+            'Medium': 'MEDIUM RISK ALERT',
+            'High': 'HIGH RISK ANOMALY',
+            'Critical': 'CRITICAL RISK - GHOST EMPLOYEE'
+        };
+        
+        mappedEmp.determination = {
+            classification: riskMap[emp.riskLevel] || 'UNCLASSIFIED',
+            confidence: emp.anomalyScore || 0,
+            reasoning: [
+                `Risk Level: ${emp.riskLevel || 'Unknown'}`,
+                emp.attendanceDays !== undefined ? `Attendance: ${Math.round(emp.attendanceDays)} days` : null,
+                emp.salary ? `Salary: $${Math.round(emp.salary).toLocaleString()}` : null,
+                emp.biometricLogs !== undefined ? `Biometric Logs: ${emp.biometricLogs}` : null,
+                emp.isGhost ? 'Status: Flagged as potential ghost employee' : null
+            ].filter(Boolean)
+        };
+        
         setSelectedEmployee(mappedEmp);
     };
 
@@ -228,32 +358,19 @@ const Dashboard = () => {
             </div>
 
             {/* Status Cards (Now Dynamic) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <StatusCard
-                    title="Total Records Processed"
-                    value={totalRecords.toLocaleString()}
-                    subtext="Analyzed by ML model"
-                    icon={Users}
+                    title="Total Reports"
+                    value={totalReports}
+                    subtext="Analysis batches stored"
+                    icon={ListIcon}
                     type="neutral"
-                />
-                <StatusCard
-                    title="Suspicious Records"
-                    value={anomalies.length}
-                    subtext={anomalies.length > 0 ? "Needs immediate review" : "All clear"}
-                    icon={AlertTriangle}
-                    type={anomalies.length > 0 ? "danger" : "neutral"}
-                />
-                <StatusCard
-                    title="Est. Financial Exposure"
-                    value={`$${totalLoss.toLocaleString()}`}
-                    subtext="Potential monthly loss"
-                    icon={DollarSign}
-                    type={totalLoss > 0 ? "danger" : "neutral"}
+                    onClick={() => navigate('/reports')}
                 />
             </div>
 
             {/* Visualizations & Data Toggle */}
-            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+            <div ref={tableRef} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                         <Activity className="w-5 h-5 text-blue-800" />
@@ -284,7 +401,7 @@ const Dashboard = () => {
                             <button
                                 onClick={() => setViewMode('scatter')}
                                 className={`px-3 py-1 rounded-md font-medium transition-colors ${viewMode === 'scatter' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'}`}>
-                                Scatter
+                                Chart
                             </button>
                             <button
                                 onClick={() => setViewMode('list')}
@@ -298,7 +415,9 @@ const Dashboard = () => {
                 {/* Render Selected View */}
                 {viewMode === 'scatter' ? (
                     <div className="fade-in">
-                        <ScatterPlot data={scatterData} onPointClick={handlePointClick} />
+                        <div className="h-96 flex items-center justify-center">
+                            <Pie data={pieData} options={pieOptions} />
+                        </div>
                     </div>
                 ) : (
                     <div className="fade-in overflow-x-auto">
@@ -372,12 +491,29 @@ const Dashboard = () => {
                 )}
 
                 {/* Dynamic Insight Box */}
+
+                {/* Risk Distribution Chart */}
+                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm mt-6">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                        <AlertTriangle className="w-5 h-5 text-red-600" />
+                        Risk Level Breakdown
+                    </h3>
+                    <div className="h-64 w-full">
+                        <Bar data={riskChartData} options={riskChartOptions} />
+                    </div>
+                </div>
+
                 <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-800 flex items-start gap-2">
                     <span className="font-bold">Insight:</span>
                     <p>
                         {anomalies.length > 0
                             ? `The model has flagged ${anomalies.length} high-probability Ghost Employee(s). These records represent a potential $${totalLoss.toLocaleString()} exposure.`
                             : `The model has analyzed ${totalRecords} records and currently detects no high-probability anomalies.`}
+                    {employees.length > 0 && (
+                        <span className="block mt-1 text-xs text-gray-600">
+                            Avg. salary: ${avgSalary.toLocaleString(undefined,{style:'currency',currency:'USD',minimumFractionDigits:0})}, Departments: {departmentCount}
+                        </span>
+                    )}
                     </p>
                 </div>
             </div>

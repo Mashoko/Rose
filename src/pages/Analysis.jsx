@@ -2,8 +2,20 @@ import React, { useState } from 'react';
 import { UploadCloud, FileText, CheckCircle, AlertTriangle, Eye, X } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
-import ScatterPlot from '../components/ScatterPlot';
 import DetailModal from '../components/DetailModal';
+import { Pie } from 'react-chartjs-2';
+import {
+    Chart as ChartJS,
+    ArcElement,
+    Tooltip,
+    Legend
+} from 'chart.js';
+
+ChartJS.register(
+    ArcElement,
+    Tooltip,
+    Legend
+);
 
 const Analysis = () => {
     const [step, setStep] = useState(1); // 1: Upload, 2: Processing, 3: Results
@@ -77,8 +89,9 @@ const Analysis = () => {
                     id: item.id || item.employee_id || item.Employee_ID || `EMP-${Math.floor(Math.random() * 10000)}`,
                     name: item.name || item.Name || item.fullName || "Unknown Employee",
                     department: item.department || item.Department || "Unknown",
-                    salary: item.salary || item.Monthly_Salary || 0,
-                    daysPresent: item.attendanceDays || item.Days_Present || 20,
+                    // round numeric values for display
+                    salary: Math.round(item.salary || item.Monthly_Salary || 0),
+                    daysPresent: Math.round(item.attendanceDays || item.Days_Present || 20),
                     risk: item.Risk_Level || item.riskLevel || 'Low',
                     score: item.Reconstruction_Error ? Math.round(item.Reconstruction_Error * 100) : 0,
                     explanation: item.explanation || "No explanation available"
@@ -86,33 +99,28 @@ const Analysis = () => {
 
                 setAnalysisResults(mappedData);
 
-                // Prepare Chart.js Data
-                const normalPoints = mappedData.filter(e => e.risk === 'Low').map(e => ({ x: e.daysPresent, y: e.salary, id: e.id }));
-                const mediumPoints = mappedData.filter(e => e.risk === 'Medium').map(e => ({ x: e.daysPresent, y: e.salary, id: e.id }));
-                const highPoints = mappedData.filter(e => e.risk === 'High').map(e => ({ x: e.daysPresent, y: e.salary, id: e.id }));
+                // Prepare pie chart data showing risk distribution
+                const lowCount = mappedData.filter(e => e.risk === 'Low').length;
+                const mediumCount = mappedData.filter(e => e.risk === 'Medium').length;
+                const highCount = mappedData.filter(e => e.risk === 'High').length;
 
                 setScatterData({
+                    labels: ['Normal (Low Risk)', 'Suspicious (Medium Risk)', 'Anomalies (High Risk)'],
                     datasets: [
                         {
-                            label: 'Normal (Low Risk)',
-                            data: normalPoints,
-                            backgroundColor: 'rgba(34, 197, 94, 0.6)', // Green
-                            borderColor: 'rgba(34, 197, 94, 1)',
-                            pointRadius: 4,
-                        },
-                        {
-                            label: 'Suspicious (Medium Risk)',
-                            data: mediumPoints,
-                            backgroundColor: 'rgba(234, 179, 8, 0.8)', // Yellow
-                            borderColor: 'rgba(234, 179, 8, 1)',
-                            pointRadius: 6,
-                        },
-                        {
-                            label: 'Anomalies (High Risk)',
-                            data: highPoints,
-                            backgroundColor: 'rgba(239, 68, 68, 1)', // Red
-                            borderColor: 'rgba(220, 38, 38, 1)',
-                            pointRadius: 8,
+                            label: 'Employee Count',
+                            data: [lowCount, mediumCount, highCount],
+                            backgroundColor: [
+                                'rgba(34, 197, 94, 0.7)',   // Green
+                                'rgba(234, 179, 8, 0.7)',   // Yellow
+                                'rgba(239, 68, 68, 0.7)'    // Red
+                            ],
+                            borderColor: [
+                                'rgba(34, 197, 94, 1)',
+                                'rgba(234, 179, 8, 1)',
+                                'rgba(239, 68, 68, 1)'
+                            ],
+                            borderWidth: 2
                         }
                     ]
                 });
@@ -217,8 +225,38 @@ const Analysis = () => {
                 <div className="space-y-6">
                     {/* Visual Analytics */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Risk Visualization (Days Present vs. Monthly Salary)</h3>
-                        {scatterData && <ScatterPlot data={scatterData} />}
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">Risk Distribution</h3>
+                        {scatterData && (
+                            <div className="h-96 flex items-center justify-center">
+                                <Pie
+                                    data={scatterData}
+                                    options={{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        plugins: {
+                                            legend: {
+                                                position: 'right',
+                                                labels: {
+                                                    padding: 15,
+                                                    font: { size: 13 }
+                                                }
+                                            },
+                                            tooltip: {
+                                                callbacks: {
+                                                    label: function(context) {
+                                                        const label = context.label || '';
+                                                        const value = context.parsed || 0;
+                                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                                        return `${label}: ${value} employees (${percentage}%)`;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {/* Data Grid */}
@@ -255,7 +293,26 @@ const Analysis = () => {
                                             </td>
                                             <td className="p-4 text-right">
                                                 <button
-                                                    onClick={() => setSelectedEmployee(emp)}
+                                                    onClick={() => {
+                                                        const empWithDetermination = { ...emp };
+                                                        const riskMap = {
+                                                            'Low': 'NORMAL EMPLOYEE',
+                                                            'Medium': 'MEDIUM RISK ALERT',
+                                                            'High': 'HIGH RISK ANOMALY',
+                                                            'Critical': 'CRITICAL RISK - GHOST EMPLOYEE'
+                                                        };
+                                                        empWithDetermination.determination = {
+                                                            classification: riskMap[emp.risk] || 'UNCLASSIFIED',
+                                                            confidence: Math.round(emp.score),
+                                                            reasoning: [
+                                                                `Risk Level: ${emp.risk || 'Unknown'}`,
+                                                                emp.daysPresent !== undefined ? `Days present: ${Math.round(emp.daysPresent)}` : null,
+                                                                emp.salary ? `Salary: $${Math.round(emp.salary).toLocaleString()}` : null,
+                                                                `Reconstruction error: ${emp.score}%`
+                                                            ].filter(Boolean)
+                                                        };
+                                                        setSelectedEmployee(empWithDetermination);
+                                                    }}
                                                     className="text-primary hover:text-blue-800 font-medium text-sm flex items-center justify-end gap-1 ml-auto"
                                                 >
                                                     <Eye className="w-4 h-4" /> Explain

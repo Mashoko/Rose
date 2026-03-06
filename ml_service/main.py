@@ -107,6 +107,96 @@ def get_dynamic_shap_explanation(row_idx, shap_vals, feature_names):
         return " Flagged mainly due to: " + " and ".join(top_features) + "."
     return " Anomalous pattern detected across multiple features."
 
+def generate_determination(row, risk_level, anomaly_score, engineered_data_idx=None):
+    """
+    Generate automatic determination object with classification, confidence, and reasoning.
+    """
+    reasoning = []
+    confidence = 0
+    
+    # Base confidence calculation from anomaly score
+    if risk_level == 'High':
+        confidence = min(95, int(anomaly_score * 100)) if anomaly_score > 0 else 60
+    elif risk_level == 'Medium':
+        confidence = int(anomaly_score * 100 * 0.7) if anomaly_score > 0 else 40
+    else:
+        confidence = int(anomaly_score * 100 * 0.3) if anomaly_score > 0 else 20
+    
+    # Build reasoning based on risk factors
+    attendance_days = row.get('Days_Present') or row.get('attendanceDays') or 20
+    attendance_rate = (attendance_days / 22) * 100 if attendance_days else 0
+    
+    # Attendance reasons
+    if attendance_days == 0:
+        reasoning.append("Zero attendance recorded across biometric logs")
+        confidence = min(99, confidence + 15)
+    elif attendance_days < 5:
+        reasoning.append(f"Critically low attendance rate ({attendance_rate:.1f}%) - below institutional minimum threshold (5%)")
+        confidence = min(99, confidence + 10)
+    elif attendance_days < 10:
+        reasoning.append(f"Significantly reduced attendance rate ({attendance_rate:.1f}%) - potential time theft indicator")
+        confidence = min(95, confidence + 5)
+    
+    # Salary anomalies
+    salary_variance = row.get('Department_Salary_Variance', 0)
+    if salary_variance and salary_variance > 1.5:
+        percentage = int(salary_variance * 100)
+        reasoning.append(f"Salary {percentage}% above departmental mean - significant deviation detected")
+        confidence = min(95, confidence + 8)
+    elif salary_variance and salary_variance > 0.8:
+        reasoning.append(f"Salary anomaly detected ({int(salary_variance * 100)}% above mean)")
+        confidence = min(90, confidence + 4)
+    
+    # Email/Phone collisions
+    email_collisions = row.get('Email_Collision_Count', 1)
+    phone_collisions = row.get('Phone_Collision_Count', 1)
+    
+    if email_collisions and email_collisions > 1:
+        reasoning.append(f"Email address shared with {int(email_collisions - 1)} other employee records - identity duplication risk")
+        confidence = min(95, confidence + 10)
+    
+    if phone_collisions and phone_collisions > 1:
+        reasoning.append(f"Phone number shared with {int(phone_collisions - 1)} other employee records - contact info duplication")
+        confidence = min(93, confidence + 8)
+    
+    # Profile completeness
+    profile_completeness = row.get('Profile_Completeness_Percentage', 100)
+    if profile_completeness and profile_completeness < 50:
+        reasoning.append("Critical gaps in employee profile data - incomplete identity verification")
+        confidence = min(90, confidence + 7)
+    elif profile_completeness and profile_completeness < 80:
+        reasoning.append(f"Employee profile {int(profile_completeness)}% complete - missing essential identity markers")
+        confidence = min(88, confidence + 4)
+    
+    # Ensure we have at least one reason
+    if not reasoning:
+        if risk_level == 'High':
+            reasoning.append("Multiple anomalous pattern indicators detected across employee profile")
+        elif risk_level == 'Medium':
+            reasoning.append("Suspicious activity patterns identified in employee records")
+        else:
+            reasoning.append("No significant anomalies detected")
+    
+    # Generate classification
+    if risk_level == 'High':
+        if attendance_days == 0 or attendance_rate < 5:
+            classification = "HIGH RISK GHOST EMPLOYEE"
+        else:
+            classification = "HIGH RISK ANOMALY DETECTED"
+    elif risk_level == 'Medium':
+        classification = "MEDIUM RISK - REQUIRES INVESTIGATION"
+    else:
+        classification = "NORMAL EMPLOYEE PROFILE"
+    
+    # Ensure confidence is in valid range
+    confidence = max(0, min(99, confidence))
+    
+    return {
+        "classification": classification,
+        "confidence": confidence,
+        "reasoning": reasoning
+    }
+
 @app.post("/analyze")
 async def analyze_file(payroll_file: UploadFile = File(...), attendance_file: UploadFile = File(...)):
     if model is None:
@@ -147,6 +237,44 @@ async def analyze_file(payroll_file: UploadFile = File(...), attendance_file: Up
             df = df.rename(columns={'date_of_hiring': 'hire_date'})
         if 'job_title' in df.columns:
             df = df.rename(columns={'job_title': 'job_titles'})
+        
+        # Normalize column names to expected aliases used by the Pydantic schema
+        # This helps accept CSVs with different header conventions (e.g. 'Name', 'Employee_ID', 'Monthly_Salary')
+        col_map = {}
+        for col in df.columns:
+            key = col.strip()
+            key_lower = key.lower()
+            # Employee identifier
+            if key_lower in ('employee_id', 'employeeid', 'employee id', 'id'):
+                col_map[col] = 'employee_id'
+                continue
+            # Name fields
+            if key_lower in ('name', 'full_name', 'full name', 'employee_name', 'employee name'):
+                col_map[col] = 'name'
+                continue
+            # Department
+            if key_lower in ('department', 'dept'):
+                col_map[col] = 'department'
+                continue
+            # Email
+            if 'email' in key_lower:
+                col_map[col] = 'email'
+                continue
+            # Phone number
+            if 'phone' in key_lower or 'telephone' in key_lower:
+                col_map[col] = 'phone_number'
+                continue
+            # Salary variants
+            if 'salary' in key_lower or 'monthly_salary' in key_lower or 'monthly salary' in key_lower:
+                col_map[col] = 'salary'
+                continue
+            # Attendance / days present
+            if 'days_present' in key_lower or ('days' in key_lower and 'present' in key_lower) or key_lower == 'days':
+                col_map[col] = 'Days_Present'
+                continue
+
+        if col_map:
+            df = df.rename(columns=col_map)
             
     except Exception as e:
         return {"status": "error", "error": f"Failed to read or merge files: {str(e)}"}
@@ -225,7 +353,26 @@ async def analyze_file(payroll_file: UploadFile = File(...), attendance_file: Up
     valid_df = valid_df.drop(columns=[col for col in drop_cols if col in valid_df.columns])
     valid_df = valid_df.replace({np.nan: None})
     
-    results = valid_df.to_dict(orient="records")
+    # Generate determination objects for each employee
+    results = []
+    for idx, record in enumerate(valid_df.to_dict(orient='records')):
+        # Reconstruct row with engineered features for determination logic
+        engineered_row = df_engineered.iloc[idx].to_dict()
+        engineered_row.update(record)
+        engineered_row['Risk_Level'] = valid_df.iloc[idx]['Risk_Level']
+        engineered_row['Anomaly_Score'] = valid_df.iloc[idx].get('Reconstruction_Error', 0)
+        
+        # Generate determination
+        determination = generate_determination(
+            engineered_row,
+            valid_df.iloc[idx]['Risk_Level'],
+            valid_df.iloc[idx].get('Reconstruction_Error', 0),
+            idx
+        )
+        record['determination'] = determination
+        record['risk'] = valid_df.iloc[idx]['Risk_Level']
+        results.append(record)
+    
     return {"status": "success", "data": results}
 
 @app.post("/retrain")

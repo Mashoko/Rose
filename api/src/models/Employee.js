@@ -13,6 +13,19 @@ const EmployeeSchema = new mongoose.Schema({
     isGhost: Boolean,
     anomalyScore: Number, // 0-100
     flaggedReasons: [String],
+    // store raw feature vector used by the model for transparency
+    features: { type: mongoose.Schema.Types.Mixed },
+    modelInfo: {
+        name: String,
+        contamination: Number,
+        prediction: String
+    },
+    // system determination statement with classification, confidence, and reasoning
+    determination: {
+        classification: String,
+        confidence: Number,
+        reasoning: [String]
+    },
     status: { type: String, enum: ['Pending', 'Under Investigation', 'False Positive', 'Confirmed Ghost'], default: 'Pending' }
 }, { timestamps: true });
 

@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import Reports from './pages/Reports';
 import Login from './pages/Login';
+import Settings from './pages/Settings';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
@@ -47,6 +48,14 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Reports />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <Layout>
+                <Settings />
               </Layout>
             </ProtectedRoute>
           } />

@@ -2,8 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .glass-card {
+    @apply bg-white/40 backdrop-blur-md border border-white/20 shadow-glass rounded-2xl;
+  }
+
+  .glass-sidebar {
+    @apply bg-white/20 backdrop-blur-lg border-r border-white/20 shadow-xl;
+  }
+}
+
 @layer base {
   body {
-    @apply bg-background text-gray-900 font-sans;
+    /* Subtle gradient background to enhance glass effect */
+    background: radial-gradient(at top left, #f8f9fa, #e2e8f0);
+    @apply text-gray-900 font-sans min-h-screen;
   }
+}
+
+/* Simple fade-in utility for sections */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.4s ease-out;
 }

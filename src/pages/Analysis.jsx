@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { UploadCloud, FileText, CheckCircle, AlertTriangle, Eye, X } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import DetailModal from '../components/DetailModal';
-import { Pie } from 'react-chartjs-2';
+import { Doughnut } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
     ArcElement,
@@ -11,19 +11,84 @@ import {
     Legend
 } from 'chart.js';
 
-ChartJS.register(
-    ArcElement,
-    Tooltip,
-    Legend
+ChartJS.register(ArcElement, Tooltip, Legend);
+
+const LoadingState = () => (
+    <div className="flex flex-col items-center justify-center min-h-[320px] w-full">
+        {/* Pulse & Scan animation */}
+        <div className="relative flex items-center justify-center h-32 w-32">
+            {/* Outer pulse rings */}
+            <div className="absolute inset-0 rounded-full bg-blue-500/15 animate-ping" />
+            <div className="absolute inset-4 rounded-full bg-blue-400/20 animate-pulse" />
+
+            {/* Central rotating ring */}
+            <div className="relative h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-[0_0_25px_rgba(30,64,175,0.35)]" />
+
+            {/* Radar dot */}
+            <div className="absolute top-1 h-3 w-3 bg-primary rounded-full shadow-[0_0_12px_rgba(30,64,175,0.85)]" />
+        </div>
+
+        {/* Subtext */}
+        <div className="mt-8 text-center">
+            <h3 className="text-xl font-semibold text-slate-700 animate-pulse">
+                Analyzing patterns...
+            </h3>
+            <p className="text-xs md:text-sm text-slate-400 mt-2 tracking-[0.25em] uppercase">
+                Analysing the Data...
+            </p>
+        </div>
+    </div>
 );
 
 const Analysis = () => {
     const [step, setStep] = useState(1); // 1: Upload, 2: Processing, 3: Results
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [employees, setAnalysisResults] = useState([]);
-    const [scatterData, setScatterData] = useState(null);
+    const [riskChartData, setRiskChartData] = useState(null);
     const [payrollFile, setPayrollFile] = useState(null);
     const [attendanceFile, setAttendanceFile] = useState(null);
+
+    const riskCounts = useMemo(() => {
+        const low = employees.filter(e => e.risk === 'Low').length;
+        const medium = employees.filter(e => e.risk === 'Medium').length;
+        const high = employees.filter(e => e.risk === 'High' || e.risk === 'Critical').length;
+        const total = employees.length;
+        const highPct = total ? Math.round((high / total) * 100) : 0;
+        return { low, medium, high, total, highPct };
+    }, [employees]);
+
+    const doughnutCenterPlugin = useMemo(() => ({
+        id: 'doughnutCenterText',
+        beforeDraw(chart) {
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return;
+
+            const centerX = (chartArea.left + chartArea.right) / 2;
+            const centerY = (chartArea.top + chartArea.bottom) / 2;
+
+            const total = riskCounts.total || 0;
+            const high = riskCounts.high || 0;
+            const pct = riskCounts.highPct || 0;
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.fillStyle = '#0f172a'; // slate-900
+            ctx.font = '700 22px Inter, ui-sans-serif, system-ui';
+            ctx.fillText(`${pct}%`, centerX, centerY - 10);
+
+            ctx.fillStyle = '#64748b'; // slate-500
+            ctx.font = '600 12px Inter, ui-sans-serif, system-ui';
+            ctx.fillText(`Ghost risk`, centerX, centerY + 12);
+
+            ctx.fillStyle = '#94a3b8'; // slate-400
+            ctx.font = '500 11px Inter, ui-sans-serif, system-ui';
+            ctx.fillText(`${high} of ${total} flagged`, centerX, centerY + 30);
+
+            ctx.restore();
+        }
+    }), [riskCounts]);
 
     const saveReportToDatabase = async (mappedData, filename) => {
         try {
@@ -104,23 +169,21 @@ const Analysis = () => {
                 const mediumCount = mappedData.filter(e => e.risk === 'Medium').length;
                 const highCount = mappedData.filter(e => e.risk === 'High').length;
 
-                setScatterData({
-                    labels: ['Normal (Low Risk)', 'Suspicious (Medium Risk)', 'Anomalies (High Risk)'],
+                setRiskChartData({
+                    labels: ['Normal (Low Risk)', 'Suspicious (Medium Risk)', 'Ghosts (High Risk)'],
                     datasets: [
                         {
                             label: 'Employee Count',
                             data: [lowCount, mediumCount, highCount],
                             backgroundColor: [
-                                'rgba(34, 197, 94, 0.7)',   // Green
-                                'rgba(234, 179, 8, 0.7)',   // Yellow
-                                'rgba(239, 68, 68, 0.7)'    // Red
+                                'rgba(34, 197, 94, 0.85)',   // Green
+                                'rgba(234, 179, 8, 0.85)',   // Yellow
+                                'rgba(239, 68, 68, 0.85)'    // Red
                             ],
-                            borderColor: [
-                                'rgba(34, 197, 94, 1)',
-                                'rgba(234, 179, 8, 1)',
-                                'rgba(239, 68, 68, 1)'
-                            ],
-                            borderWidth: 2
+                            borderWidth: 0,
+                            spacing: 3,
+                            hoverOffset: 8,
+                            borderRadius: 10,
                         }
                     ]
                 });
@@ -200,23 +263,8 @@ const Analysis = () => {
 
             {/* Step 2: Processing */}
             {step === 2 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-                    <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-                    <h3 className="text-lg font-bold text-gray-800">Processing Data...</h3>
-                    <p className="text-gray-500 mb-6">Running Isolation Forest Model for anomaly detection.</p>
-
-                    <div className="max-w-md mx-auto space-y-3 text-sm text-left">
-                        <div className="flex items-center gap-3 text-green-600">
-                            <CheckCircle className="w-4 h-4" /> Validating File Structure
-                        </div>
-                        <div className="flex items-center gap-3 text-green-600">
-                            <CheckCircle className="w-4 h-4" /> Extracting Advanced Features
-                        </div>
-                        <div className="flex items-center gap-3 text-primary animate-pulse">
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                            Identifying Ghost Outliers
-                        </div>
-                    </div>
+                <div className="glass-card p-10 flex flex-col items-center justify-center">
+                    <LoadingState />
                 </div>
             )}
 
@@ -224,43 +272,102 @@ const Analysis = () => {
             {step === 3 && (
                 <div className="space-y-6">
                     {/* Visual Analytics */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Risk Distribution</h3>
-                        {scatterData && (
-                            <div className="h-96 flex items-center justify-center">
-                                <Pie
-                                    data={scatterData}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: {
-                                            legend: {
-                                                position: 'right',
-                                                labels: {
-                                                    padding: 15,
-                                                    font: { size: 13 }
-                                                }
-                                            },
-                                            tooltip: {
-                                                callbacks: {
-                                                    label: function(context) {
-                                                        const label = context.label || '';
-                                                        const value = context.parsed || 0;
-                                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                                                        return `${label}: ${value} employees (${percentage}%)`;
+                    <div className="glass-card p-6">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800">Risk Distribution</h3>
+                                <p className="text-xs text-gray-500">
+                                    Executive snapshot of normal vs suspicious vs ghost-risk population.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                                    Low: {riskCounts.low}
+                                </span>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 border border-amber-500/20">
+                                    Medium: {riskCounts.medium}
+                                </span>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-700 border border-red-500/20">
+                                    High (Ghost): {riskCounts.high}
+                                </span>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-700 border border-slate-500/20">
+                                    Total: {riskCounts.total}
+                                </span>
+                            </div>
+                        </div>
+
+                        {riskChartData && (
+                            <div className="grid grid-cols-1 lg:grid-cols-[1.2fr,1fr] gap-6 items-center">
+                                <div className="h-80 md:h-96 bg-white/30 rounded-2xl border border-white/20 p-4">
+                                    <Doughnut
+                                        data={riskChartData}
+                                        plugins={[doughnutCenterPlugin]}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            cutout: '72%',
+                                            plugins: {
+                                                legend: {
+                                                    position: 'bottom',
+                                                    labels: {
+                                                        boxWidth: 10,
+                                                        boxHeight: 10,
+                                                        usePointStyle: true,
+                                                        pointStyle: 'circle',
+                                                        padding: 14,
+                                                        font: { size: 12, weight: '600' }
+                                                    }
+                                                },
+                                                tooltip: {
+                                                    callbacks: {
+                                                        label: function (context) {
+                                                            const label = context.label || '';
+                                                            const value = context.parsed || 0;
+                                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                                            return `${label}: ${value} employees (${percentage}%)`;
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                    }}
-                                />
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="bg-white/30 rounded-2xl border border-white/20 p-4">
+                                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                                            Ghost risk signal
+                                        </p>
+                                        <p className="mt-1 text-2xl font-extrabold text-gray-900">
+                                            {riskCounts.highPct}%
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            of scanned employees are in the high-risk (ghost) category.
+                                        </p>
+                                    </div>
+                                    <div className="bg-white/30 rounded-2xl border border-white/20 p-4">
+                                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                                            Next actions
+                                        </p>
+                                        <ul className="mt-2 text-sm text-gray-700 space-y-1">
+                                            <li className="flex items-start gap-2">
+                                                <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5" />
+                                                Review high-risk employees first; export to Reports for audit trail.
+                                            </li>
+                                            <li className="flex items-start gap-2">
+                                                <CheckCircle className="w-4 h-4 text-emerald-600 mt-0.5" />
+                                                Use “Explain” to document reasoning and evidence for each record.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
 
                     {/* Data Grid */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="glass-card overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>

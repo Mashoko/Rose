@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import StatusCard from '../components/StatusCard';
 import DetailModal from '../components/DetailModal';
 import { fetchEmployees, fetchReports } from '../services/api';
-import { Users, AlertTriangle, DollarSign, Activity, List as ListIcon, TrendingUp, Eye } from 'lucide-react';
-import { Line, Bar, Pie } from 'react-chartjs-2';
+import { Users, AlertTriangle, DollarSign, Activity, List as ListIcon, TrendingUp, Eye, Gauge, ShieldCheck, Banknote } from 'lucide-react';
+import { Line, Bar, Pie, Doughnut, Scatter } from 'react-chartjs-2';
 import { AnimatePresence } from 'framer-motion';
 import {
     Chart as ChartJS,
@@ -118,11 +118,35 @@ const Dashboard = () => {
     // 4. Dynamic Calculations (Metrics)
     // Adjust properties to match EmployeeSchema (isGhost, salary, attendanceDays, etc)
     const totalRecords = employees.length; // Total analyzed by ML model (unfiltered)
-    const confirmedGhosts = employees.filter(emp => emp.status === 'Confirmed Ghost').length;
-    const anomalies = filteredEmployees.filter(emp => emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical');
-    const normalEmployees = filteredEmployees.filter(emp => emp.isGhost !== true && emp.riskLevel !== 'High' && emp.riskLevel !== 'Critical');
 
-    const totalLoss = anomalies.reduce((sum, emp) => sum + (Number(emp.salary) || 0), 0);
+    // In the new model, high-risk employees are automatically treated as ghost employees.
+    const highRiskEmployeesAll = employees.filter(
+        emp => emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical'
+    );
+
+    const confirmedGhosts = highRiskEmployeesAll.length;
+
+    // Apply current filters when showing anomalies in the list/chart views
+    const anomalies = filteredEmployees.filter(
+        emp => emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical'
+    );
+    const normalEmployees = filteredEmployees.filter(
+        emp => emp.isGhost !== true && emp.riskLevel !== 'High' && emp.riskLevel !== 'Critical'
+    );
+
+    // Exposure is based on all high‑risk employees, not just the filtered subset
+    const totalLoss = highRiskEmployeesAll.reduce((sum, emp) => sum + (Number(emp.salary) || 0), 0);
+
+    // Estimated savings from audits (confirmed ghosts removed from payroll).
+    // With the new automatic model, this will typically remain 0 until you add a workflow
+    // that actually removes or suspends ghost employees from active payroll.
+    const savingsFromAudits = employees
+        .filter(emp => emp.status === 'Confirmed Ghost')
+        .reduce((sum, emp) => sum + (Number(emp.salary) || 0), 0);
+
+    // Executive view health score (very simple heuristic based on anomaly rate)
+    const anomalyRate = totalRecords ? (highRiskEmployeesAll.length / totalRecords) : 0;
+    const integrityScore = Math.max(0, Math.round(100 - anomalyRate * 100));
 
     // extra metrics for a more comprehensive dashboard
     const totalReports = reports.length;
@@ -130,6 +154,137 @@ const Dashboard = () => {
         ? employees.reduce((sum, e) => sum + (Number(e.salary) || 0), 0) / employees.length
         : 0;
     const departmentCount = new Set(employees.map(e => e.department).filter(Boolean)).size;
+
+    // Departmental aggregation for managerial view
+    const departmentStats = employees.reduce((acc, emp) => {
+        const dept = emp.department || 'Unassigned';
+        if (!acc[dept]) {
+            acc[dept] = {
+                payrollTotal: 0,
+                employeeCount: 0,
+                highRiskCount: 0,
+                anomalyExposure: 0,
+            };
+        }
+        acc[dept].payrollTotal += Number(emp.salary) || 0;
+        acc[dept].employeeCount += 1;
+        const isHighRisk = emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical';
+        if (isHighRisk) {
+            acc[dept].highRiskCount += 1;
+            acc[dept].anomalyExposure += Number(emp.salary) || 0;
+        }
+        return acc;
+    }, {});
+
+    const departmentLabels = Object.keys(departmentStats);
+    const departmentRiskPercentages = departmentLabels.map(label => {
+        const stat = departmentStats[label];
+        if (!stat.employeeCount) return 0;
+        return +(stat.highRiskCount / stat.employeeCount * 100).toFixed(1);
+    });
+    const departmentPayrollTotals = departmentLabels.map(label => departmentStats[label].payrollTotal);
+
+    // Zero-deduction employees (heuristic: missing or zero 'deductions' field)
+    const zeroDeductionEmployees = employees.filter(emp => {
+        const deductions = Number(emp.deductions ?? emp.totalDeductions ?? 0);
+        return (Number.isFinite(deductions) && deductions === 0) || (!emp.deductions && !emp.totalDeductions);
+    });
+
+    const zeroDeductionChartData = {
+        labels: zeroDeductionEmployees.slice(0, 12).map(emp => emp.fullName || (emp.id || emp.employeeId)),
+        datasets: [
+            {
+                label: 'Net Salary (approx)',
+                data: zeroDeductionEmployees.slice(0, 12).map(emp => Number(emp.salary) || 0),
+                backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                borderColor: 'rgba(59, 130, 246, 1)',
+                borderWidth: 1,
+            },
+        ],
+    };
+
+    // Bank account collisions – multiple employees sharing same account number
+    const bankCollisionMap = employees.reduce((acc, emp) => {
+        const account = emp.bankAccount || emp.bankAccountNumber || emp.iban;
+        if (!account) return acc;
+        if (!acc[account]) acc[account] = [];
+        acc[account].push(emp);
+        return acc;
+    }, {});
+
+    const bankCollisions = Object.entries(bankCollisionMap)
+        .filter(([, emps]) => emps.length > 1)
+        .map(([account, emps]) => ({
+            account,
+            count: emps.length,
+            names: emps.map(e => e.fullName || (e.id || e.employeeId)).join(', ')
+        }))
+        .slice(0, 6);
+
+    // Attendance vs biometric correlation (forensic scatter)
+    const attendanceScatterPoints = employees
+        .filter(emp => emp.attendanceDays !== undefined && emp.biometricLogs !== undefined)
+        .map(emp => ({
+            x: Number(emp.attendanceDays) || 0,
+            y: Number(emp.biometricLogs) || 0,
+        }));
+
+    const attendanceScatterData = {
+        datasets: [
+            {
+                label: 'Attendance vs Biometric Logs',
+                data: attendanceScatterPoints,
+                backgroundColor: 'rgba(34, 197, 94, 0.7)',
+            },
+        ],
+    };
+
+    // Anomaly score vs salary scatter (forensic view)
+    const anomalyScatterPoints = employees
+        .filter(emp => emp.anomalyScore !== undefined && emp.salary !== undefined)
+        .map(emp => ({
+            x: Number(emp.salary) || 0,
+            y: Number(emp.anomalyScore) || 0,
+        }));
+
+    const anomalyScatterData = {
+        datasets: [
+            {
+                label: 'Anomaly Score vs Salary',
+                data: anomalyScatterPoints,
+                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+            },
+        ],
+    };
+
+    // Executive tier charts
+    const integrityGaugeData = {
+        labels: ['Secure', 'Risk'],
+        datasets: [
+            {
+                data: [integrityScore, 100 - integrityScore],
+                backgroundColor: ['rgba(34,197,94,0.9)', 'rgba(148,163,184,0.3)'],
+                borderWidth: 0,
+                circumference: 180,
+                rotation: -90,
+                cutout: '70%',
+            },
+        ],
+    };
+
+    const savingsGaugeData = {
+        labels: ['Recovered Exposure', 'Remaining Risk'],
+        datasets: [
+            {
+                data: [savingsFromAudits, Math.max(totalLoss - savingsFromAudits, 0)],
+                backgroundColor: ['rgba(59,130,246,0.9)', 'rgba(148,163,184,0.3)'],
+                borderWidth: 0,
+                circumference: 180,
+                rotation: -90,
+                cutout: '70%',
+            },
+        ],
+    };
 
     // 4. Format Data for Chart.js Scatter Plot
 
@@ -306,13 +461,23 @@ const Dashboard = () => {
         }
     };
 
-    // 5. Line Chart Data for Historical Exposure
+    // 5. Line Chart Data for Historical Exposure (last 30 days)
+    const now = new Date();
+    const THIRTY_DAYS = 1000 * 60 * 60 * 24 * 30;
+    const reportsLastMonth = reports
+        .map(r => ({
+            ...r,
+            _date: new Date(r.date || r.createdAt || r.updatedAt || now),
+        }))
+        .filter(r => !isNaN(r._date.getTime()) && (now.getTime() - r._date.getTime()) <= THIRTY_DAYS)
+        .sort((a, b) => a._date - b._date);
+
     const lineData = {
-        labels: reports.slice().reverse().map(r => new Date(r.date).toLocaleDateString()),
+        labels: reportsLastMonth.map(r => r._date.toLocaleDateString()),
         datasets: [
             {
                 label: 'Total Financial Exposure ($)',
-                data: reports.slice().reverse().map(r => r.summary?.totalExposure || 0),
+                data: reportsLastMonth.map(r => r.summary?.totalExposure || 0),
                 borderColor: 'rgba(239, 68, 68, 1)', // Red
                 backgroundColor: 'rgba(239, 68, 68, 0.1)',
                 borderWidth: 2,
@@ -322,7 +487,7 @@ const Dashboard = () => {
             },
             {
                 label: 'Total Anomalies Detected',
-                data: reports.slice().reverse().map(r => (r.summary?.highRiskCount || 0) + (r.summary?.mediumRiskCount || 0)),
+                data: reportsLastMonth.map(r => (r.summary?.highRiskCount || 0) + (r.summary?.mediumRiskCount || 0)),
                 borderColor: 'rgba(59, 130, 246, 1)', // Blue
                 backgroundColor: 'transparent',
                 borderWidth: 2,
@@ -335,6 +500,7 @@ const Dashboard = () => {
 
     const lineOptions = {
         responsive: true,
+        maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
             legend: { position: 'top' }
@@ -350,30 +516,100 @@ const Dashboard = () => {
     if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
     return (
-        <div className="space-y-8">
-            {/* Header Section */}
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-                <p className="text-gray-500">Live payroll health overview and anomaly detection.</p>
+        <div className="space-y-8 pb-10">
+            {/* Header Section + Provenance strip */}
+            <div className="fade-in space-y-3">
+                <div>
+                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Dashboard</h1>
+                    <p className="text-gray-600">Live payroll health overview and anomaly detection.</p>
+                </div>
+                {reportsLastMonth.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => navigate('/reports')}
+                        className="w-full md:w-auto glass-card px-4 py-3 flex items-center justify-between md:justify-start gap-3 text-xs md:text-sm hover:bg-white/60 transition-all"
+                    >
+                        <div className="flex flex-col md:flex-row md:items-center md:gap-3 text-left">
+                            <span className="font-semibold text-gray-800 flex items-center gap-1">
+                                <TrendingUp className="w-4 h-4 text-red-500" />
+                                Latest analysis
+                            </span>
+                            <span className="text-gray-500">
+                                {reportsLastMonth[reportsLastMonth.length - 1].reportName || 'Unnamed run'}
+                            </span>
+                        </div>
+                        <span className="text-[0.7rem] md:text-xs text-gray-500 whitespace-nowrap">
+                            {reportsLastMonth[reportsLastMonth.length - 1]._date.toLocaleString()}
+                        </span>
+                    </button>
+                )}
             </div>
 
-            {/* Status Cards (Now Dynamic) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {/* Executive Tier – System Health Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatusCard
-                    title="Total Reports"
-                    value={totalReports}
-                    subtext="Analysis batches stored"
-                    icon={ListIcon}
-                    type="neutral"
+                    title="System Integrity Score"
+                    value={`${integrityScore}%`}
+                    subtext={`${anomalies.length} of ${totalRecords} employees currently flagged`}
+                    icon={ShieldCheck}
+                    type="primary"
+                    className="glass-card hover:bg-white/50 transition-all"
+                />
+                <StatusCard
+                    title="Confirmed Ghost Accounts"
+                    value={confirmedGhosts}
+                    subtext="Removed from active payroll"
+                    icon={Users}
+                    type="danger"
+                    className="glass-card hover:bg-white/50 transition-all"
+                    onClick={() => setViewMode('list')}
+                />
+                <StatusCard
+                    title="Estimated Exposure"
+                    value={`$${totalLoss.toLocaleString()}`}
+                    subtext="Potential monthly loss if unaddressed"
+                    icon={DollarSign}
+                    type="primary"
+                    className="glass-card hover:bg-white/50 transition-all cursor-pointer"
                     onClick={() => navigate('/reports')}
                 />
             </div>
 
-            {/* Visualizations & Data Toggle */}
-            <div ref={tableRef} className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-blue-800" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="glass-card p-6">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <Gauge className="w-4 h-4 text-emerald-500" />
+                        Integrity Gauge
+                    </h3>
+                    <div className="h-48">
+                        <Doughnut data={integrityGaugeData} options={{ plugins: { legend: { display: false } }, maintainAspectRatio: false }} />
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                        Based on the current anomaly rate across all analyzed employees.
+                    </p>
+                </div>
+
+                <div className="glass-card p-6">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2 uppercase tracking-wide">
+                        <Banknote className="w-4 h-4 text-blue-500" />
+                        Savings from Audits
+                    </h3>
+                    <div className="h-48">
+                        <Doughnut data={savingsGaugeData} options={{ plugins: { legend: { display: false } }, maintainAspectRatio: false }} />
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                        Salaries associated with confirmed ghost accounts are treated as recovered exposure.
+                    </p>
+                </div>
+            </div>
+
+            {/* Forensic Controls – Risk Distribution & Filters */}
+            <div ref={tableRef} className="glass-card p-8">
+                <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-xl font-bold text-gray-800 flex items-center gap-3">
+                        <div className="p-2 bg-blue-500/20 rounded-lg">
+                            <Activity className="w-5 h-5 text-blue-900" />
+                        </div>
                         Payroll Anomaly Detection
                     </h3>
 
@@ -382,7 +618,7 @@ const Dashboard = () => {
                         <select
                             value={filterDept}
                             onChange={(e) => { setFilterDept(e.target.value); setCurrentPage(1); }}
-                            className="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            className="px-3 py-2 bg-white/50 backdrop-blur-sm border border-white/30 rounded-xl text-sm focus:ring-primary focus:outline-none"
                         >
                             {departments.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
@@ -390,137 +626,218 @@ const Dashboard = () => {
                         <select
                             value={filterRisk}
                             onChange={(e) => { setFilterRisk(e.target.value); setCurrentPage(1); }}
-                            className="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            className="px-3 py-2 bg-white/50 backdrop-blur-sm border border-white/30 rounded-xl text-sm focus:ring-primary focus:outline-none"
                         >
                             <option value="All">All Risks</option>
                             <option value="High Risk">High Risk Only</option>
                             <option value="Normal">Normal Only</option>
                         </select>
 
-                        <div className="flex bg-gray-100 p-1 rounded-lg text-xs">
+                        <div className="flex bg-black/5 p-1 rounded-xl backdrop-blur-md text-xs">
                             <button
                                 onClick={() => setViewMode('scatter')}
-                                className={`px-3 py-1 rounded-md font-medium transition-colors ${viewMode === 'scatter' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'}`}>
-                                Chart
+                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'scatter' ? 'bg-white shadow-md text-primary' : 'text-gray-500'}`}>
+                                CHART
                             </button>
                             <button
                                 onClick={() => setViewMode('list')}
-                                className={`px-3 py-1 rounded-md font-medium transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-800'}`}>
-                                List
+                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-white shadow-md text-primary' : 'text-gray-500'}`}>
+                                LIST
                             </button>
                         </div>
                     </div>
                 </div>
 
                 {/* Render Selected View */}
-                {viewMode === 'scatter' ? (
-                    <div className="fade-in">
-                        <div className="h-96 flex items-center justify-center">
-                            <Pie data={pieData} options={pieOptions} />
-                        </div>
-                    </div>
-                ) : (
-                    <div className="fade-in overflow-x-auto">
-                        {/* Basic Data Table Placeholder for 'List' View */}
-                        <table className="min-w-full text-left text-sm whitespace-nowrap">
-                            <thead className="uppercase tracking-wider border-b-2 border-gray-200 bg-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 border-b border-gray-200">ID</th>
-                                    <th className="px-6 py-3 border-b border-gray-200">Full Name</th>
-                                    <th className="px-6 py-3 border-b border-gray-200">Department</th>
-                                    <th className="px-6 py-3 border-b border-gray-200">Salary</th>
-                                    <th className="px-6 py-3 border-b border-gray-200">Case Status</th>
-                                    <th className="px-6 py-3 border-b border-gray-200 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredEmployees.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((emp, index) => (
-                                    <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-gray-900">{emp.id || emp.employeeId}</td>
-                                        <td className="px-6 py-4 font-medium text-gray-900">{emp.fullName}</td>
-                                        <td className="px-6 py-4 text-gray-600">{emp.department}</td>
-                                        <td className="px-6 py-4">${emp.salary}</td>
-                                        <td className="px-6 py-4">
-                                            {emp.status === 'Confirmed Ghost' && <span className="text-red-800 font-bold bg-red-100 px-2.5 py-1 rounded-full text-xs">Confirmed</span>}
-                                            {emp.status === 'Under Investigation' && <span className="text-orange-800 font-bold bg-orange-100 px-2.5 py-1 rounded-full text-xs">Investigating</span>}
-                                            {emp.status === 'False Positive' && <span className="text-gray-800 font-bold bg-gray-200 px-2.5 py-1 rounded-full text-xs">Safe</span>}
-                                            {(emp.status === 'Pending' || !emp.status) && (
-                                                (emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical') ?
-                                                    (<span className="text-yellow-800 font-bold bg-yellow-100 px-2.5 py-1 rounded-full text-xs">Flagged</span>) :
-                                                    (<span className="text-green-800 font-bold bg-green-100 px-2.5 py-1 rounded-full text-xs">Normal</span>)
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button
-                                                onClick={() => handleListClick(emp)}
-                                                className="text-primary hover:text-blue-800 font-medium text-sm inline-flex items-center gap-1"
-                                            >
-                                                <Eye className="w-4 h-4" /> View
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-
-                        {/* Pagination Controls */}
-                        {filteredEmployees.length > itemsPerPage && (
-                            <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 bg-gray-50">
-                                <div className="text-sm text-gray-700">
-                                    Showing <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredEmployees.length)}</span> of <span className="font-medium">{filteredEmployees.length}</span> results
-                                </div>
-                                <div className="flex bg-white rounded-md shadow-sm border border-gray-300">
-                                    <button
-                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                        disabled={currentPage === 1}
-                                        className="px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed border-r border-gray-300"
-                                    >
-                                        Previous
-                                    </button>
-                                    <button
-                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredEmployees.length / itemsPerPage)))}
-                                        disabled={currentPage === Math.ceil(filteredEmployees.length / itemsPerPage)}
-                                        className="px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Next
-                                    </button>
+                <div className="min-h-[400px]">
+                    {viewMode === 'scatter' ? (
+                        <div className="fade-in grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="h-80 flex items-center justify-center p-4 bg-white/30 rounded-2xl">
+                                <Pie data={pieData} options={pieOptions} />
+                            </div>
+                            <div className="h-80 bg-white/30 rounded-2xl p-4">
+                                <h4 className="font-bold text-gray-700 mb-2 text-sm uppercase tracking-wide">
+                                    Zero-Deduction Alert
+                                </h4>
+                                <p className="text-xs text-gray-500 mb-3">
+                                    Employees with no recorded voluntary deductions &mdash; a common ghost pattern.
+                                </p>
+                                <div className="h-64">
+                                    <Bar data={zeroDeductionChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
                                 </div>
                             </div>
-                        )}
-                    </div>
-                )}
+                        </div>
+                    ) : (
+                        <div className="fade-in grid grid-cols-1 lg:grid-cols-[2fr,1.2fr] gap-6">
+                            {/* Forensic List */}
+                            <div className="overflow-x-auto rounded-xl">
+                                <table className="min-w-full text-left text-sm whitespace-nowrap">
+                                    <thead className="bg-white/40 uppercase text-xs font-bold text-gray-600">
+                                        <tr>
+                                            <th className="px-6 py-4">ID</th>
+                                            <th className="px-6 py-4">Full Name</th>
+                                            <th className="px-6 py-4">Department</th>
+                                            <th className="px-6 py-4">Salary</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/20">
+                                        {filteredEmployees.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((emp, index) => (
+                                            <tr key={index} className="hover:bg-white/20 transition-colors">
+                                                <td className="px-6 py-4 font-medium text-gray-900">{emp.id || emp.employeeId}</td>
+                                                <td className="px-6 py-4 font-medium text-gray-900">{emp.fullName}</td>
+                                                <td className="px-6 py-4 text-gray-600">{emp.department}</td>
+                                                <td className="px-6 py-4">${emp.salary}</td>
+                                                <td className="px-6 py-4">
+                                                    {emp.status === 'Confirmed Ghost' && <span className="text-red-800 font-bold bg-red-100 px-2.5 py-1 rounded-full text-xs">Confirmed</span>}
+                                                    {emp.status === 'Under Investigation' && <span className="text-orange-800 font-bold bg-orange-100 px-2.5 py-1 rounded-full text-xs">Investigating</span>}
+                                                    {emp.status === 'False Positive' && <span className="text-gray-800 font-bold bg-gray-200 px-2.5 py-1 rounded-full text-xs">Safe</span>}
+                                                    {(emp.status === 'Pending' || !emp.status) && (
+                                                        (emp.isGhost === true || emp.riskLevel === 'High' || emp.riskLevel === 'Critical') ?
+                                                            (<span className="text-yellow-800 font-bold bg-yellow-100 px-2.5 py-1 rounded-full text-xs">Flagged</span>) :
+                                                            (<span className="text-green-800 font-bold bg-green-100 px-2.5 py-1 rounded-full text-xs">Normal</span>)
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button
+                                                        onClick={() => handleListClick(emp)}
+                                                        className="text-primary hover:text-blue-800 font-medium text-sm inline-flex items-center gap-1"
+                                                    >
+                                                        <Eye className="w-4 h-4" /> View
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
 
-                {/* Dynamic Insight Box */}
+                                {/* Pagination Controls */}
+                                {filteredEmployees.length > itemsPerPage && (
+                                    <div className="flex items-center justify-between px-6 py-3 border-t border-white/10 bg-white/10 mt-2 rounded-b-xl">
+                                        <div className="text-sm text-gray-100">
+                                            Showing <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredEmployees.length)}</span> of <span className="font-medium">{filteredEmployees.length}</span> results
+                                        </div>
+                                        <div className="flex bg-white/20 rounded-md shadow-sm border border-white/30">
+                                            <button
+                                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                                disabled={currentPage === 1}
+                                                className="px-3 py-1 text-sm text-gray-800 hover:bg-white/40 disabled:opacity-50 disabled:cursor-not-allowed border-r border-white/30"
+                                            >
+                                                Previous
+                                            </button>
+                                            <button
+                                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredEmployees.length / itemsPerPage)))}
+                                                disabled={currentPage === Math.ceil(filteredEmployees.length / itemsPerPage)}
+                                                className="px-3 py-1 text-sm text-gray-800 hover:bg-white/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
-                {/* Risk Distribution Chart */}
-                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm mt-6">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
-                        <AlertTriangle className="w-5 h-5 text-red-600" />
-                        Risk Level Breakdown
-                    </h3>
-                    <div className="h-64 w-full">
-                        <Bar data={riskChartData} options={riskChartOptions} />
-                    </div>
+                            {/* Bank Account Collisions */}
+                            <div className="bg-white/30 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
+                                <h4 className="font-bold text-gray-700 mb-2 text-sm uppercase tracking-wide flex items-center gap-2">
+                                    <Banknote className="w-4 h-4 text-red-500" />
+                                    Bank Account Collisions
+                                </h4>
+                                <p className="text-xs text-gray-500 mb-3">
+                                    Multiple employees mapped to the same bank account or IBAN.
+                                </p>
+                                {bankCollisions.length === 0 ? (
+                                    <p className="text-xs text-emerald-600">No suspicious overlaps detected.</p>
+                                ) : (
+                                    <div className="space-y-2 text-xs max-h-64 overflow-y-auto pr-1">
+                                        {bankCollisions.map((row, idx) => (
+                                            <div key={idx} className="border border-white/30 rounded-xl p-2 bg-white/30">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="font-semibold text-gray-800 truncate">Acct: {row.account}</span>
+                                                    <span className="text-[0.7rem] text-red-600 font-semibold">
+                                                        {row.count} matches
+                                                    </span>
+                                                </div>
+                                                <p className="text-[0.7rem] text-gray-600">
+                                                    {row.names}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-800 flex items-start gap-2">
-                    <span className="font-bold">Insight:</span>
-                    <p>
-                        {anomalies.length > 0
-                            ? `The model has flagged ${anomalies.length} high-probability Ghost Employee(s). These records represent a potential $${totalLoss.toLocaleString()} exposure.`
-                            : `The model has analyzed ${totalRecords} records and currently detects no high-probability anomalies.`}
-                    {employees.length > 0 && (
-                        <span className="block mt-1 text-xs text-gray-600">
-                            Avg. salary: ${avgSalary.toLocaleString(undefined,{style:'currency',currency:'USD',minimumFractionDigits:0})}, Departments: {departmentCount}
-                        </span>
-                    )}
-                    </p>
+                {/* Managerial Tier – Departmental Risk & Budget vs Exposure */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+                    <div className="lg:col-span-2 bg-white/30 backdrop-blur-sm p-6 rounded-2xl border border-white/20">
+                        <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-500" />
+                            Departmental Risk Density
+                        </h4>
+                        <p className="text-xs text-gray-500 mb-3">
+                            Bar height reflects payroll size; color intensity reflects percentage of high‑risk employees.
+                        </p>
+                        <div className="h-64">
+                            <Bar
+                                data={{
+                                    labels: departmentLabels,
+                                    datasets: [
+                                        {
+                                            type: 'bar',
+                                            label: 'Total Payroll ($)',
+                                            data: departmentPayrollTotals,
+                                            backgroundColor: 'rgba(59,130,246,0.6)',
+                                            yAxisID: 'y',
+                                        },
+                                        {
+                                            type: 'line',
+                                            label: '% High Risk',
+                                            data: departmentRiskPercentages,
+                                            borderColor: 'rgba(239,68,68,1)',
+                                            backgroundColor: 'rgba(239,68,68,0.2)',
+                                            yAxisID: 'y1',
+                                        },
+                                    ],
+                                }}
+                                options={{
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    scales: {
+                                        y: { position: 'left', title: { display: true, text: 'Payroll ($)' } },
+                                        y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '% High Risk' } },
+                                    },
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="bg-primary text-white p-6 rounded-2xl shadow-lg flex flex-col justify-between">
+                        <div>
+                            <p className="text-blue-100 text-sm font-medium">Institute Exposure Snapshot</p>
+                            <h2 className="text-4xl font-bold mt-2">${totalLoss.toLocaleString()}</h2>
+                        </div>
+                        <div className="bg-white/20 p-3 rounded-xl backdrop-blur-md text-xs">
+                            <span className="font-bold">Insight:</span>{' '}
+                            {anomalies.length > 0
+                                ? `${anomalies.length} high-risk employees currently impacting exposure.`
+                                : `Model currently detects no high-probability anomalies.`}
+                            {employees.length > 0 && (
+                                <span className="block mt-1 text-[0.7rem] text-blue-50">
+                                    Avg. salary: {avgSalary.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 0 })} · Departments: {departmentCount}
+                                </span>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* Historical Trends Section */}
             {reports.length > 0 && (
-                <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm mt-8">
+                <div className="glass-card p-8 mt-4">
                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-6">
                         <TrendingUp className="w-5 h-5 text-red-600" />
                         Historical Exposure Trends

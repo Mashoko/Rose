@@ -165,36 +165,45 @@ const Reports = () => {
             <AnimatePresence>
                 {viewingReport && (
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="fixed inset-0 z-40 bg-gray-50 flex flex-col overflow-hidden"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4"
                     >
-                        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10 w-full shadow-sm shrink-0">
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900">{viewingReport.reportName}</h2>
-                                <p className="text-sm text-gray-500">Run on {new Date(viewingReport.date).toLocaleString()}</p>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                            className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full h-[85vh] flex flex-col overflow-hidden"
+                        >
+                            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
+                                <div className="min-w-0">
+                                    <h2 className="text-lg md:text-xl font-bold text-gray-900 truncate">
+                                        {viewingReport.reportName}
+                                    </h2>
+                                    <p className="text-xs md:text-sm text-gray-500">
+                                        Run on {new Date(viewingReport.date).toLocaleString()}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => { setViewingReport(null); setViewingReportId(null); }}
+                                    className="px-3 md:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center gap-2 text-xs md:text-sm font-medium transition-colors"
+                                >
+                                    <X className="w-4 h-4 md:w-5 md:h-5" /> Close View
+                                </button>
                             </div>
-                            <button
-                                onClick={() => { setViewingReport(null); setViewingReportId(null); }}
-                                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center gap-2 font-medium transition-colors"
-                            >
-                                <X className="w-5 h-5" /> Close View
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6 relative">
-                            <div className="max-w-7xl mx-auto">
+                            <div className="flex-1 overflow-auto p-4 md:p-6">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse">
+                                        <table className="w-full text-left border-collapse text-xs md:text-sm">
                                             <thead>
-                                                <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
-                                                    <th className="p-4 font-semibold">ID</th>
-                                                    <th className="p-4 font-semibold flex-1">Name</th>
-                                                    <th className="p-4 font-semibold">Department</th>
-                                                    <th className="p-4 font-semibold">Salary</th>
-                                                    <th className="p-4 font-semibold">Risk Level</th>
-                                                    <th className="p-4 font-semibold text-right">Actions</th>
+                                                <tr className="bg-gray-50 border-b border-gray-200 text-[0.65rem] md:text-xs uppercase tracking-wider text-gray-500">
+                                                    <th className="p-3 md:p-4 font-semibold">ID</th>
+                                                    <th className="p-3 md:p-4 font-semibold">Name</th>
+                                                    <th className="p-3 md:p-4 font-semibold">Department</th>
+                                                    <th className="p-3 md:p-4 font-semibold">Salary</th>
+                                                    <th className="p-3 md:p-4 font-semibold">Risk Level</th>
+                                                    <th className="p-3 md:p-4 font-semibold text-right">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
@@ -202,12 +211,14 @@ const Reports = () => {
                                                     <tr key={emp.id} className={clsx("hover:bg-gray-50 transition-colors", {
                                                         "bg-red-50/50": emp.risk === 'High'
                                                     })}>
-                                                        <td className="p-4 font-medium text-gray-900 whitespace-nowrap">{emp.id}</td>
-                                                        <td className="p-4 text-gray-700 whitespace-nowrap">{emp.name}</td>
-                                                        <td className="p-4 text-gray-500 whitespace-nowrap">{emp.department}</td>
-                                                        <td className="p-4 text-gray-900 font-mono whitespace-nowrap">${emp.salary?.toLocaleString()}</td>
-                                                        <td className="p-4 whitespace-nowrap">
-                                                            <span className={clsx("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", {
+                                                        <td className="p-3 md:p-4 font-medium text-gray-900 whitespace-nowrap">{emp.id}</td>
+                                                        <td className="p-3 md:p-4 text-gray-700 whitespace-nowrap">{emp.name}</td>
+                                                        <td className="p-3 md:p-4 text-gray-500 whitespace-nowrap">{emp.department}</td>
+                                                        <td className="p-3 md:p-4 text-gray-900 font-mono whitespace-nowrap">
+                                                            ${emp.salary?.toLocaleString()}
+                                                        </td>
+                                                        <td className="p-3 md:p-4 whitespace-nowrap">
+                                                            <span className={clsx("inline-flex items-center px-2.5 py-0.5 rounded-full text-[0.65rem] md:text-xs font-medium", {
                                                                 "bg-red-100 text-red-800": emp.risk === 'High',
                                                                 "bg-yellow-100 text-yellow-800": emp.risk === 'Medium',
                                                                 "bg-green-100 text-green-800": emp.risk === 'Low',
@@ -215,12 +226,12 @@ const Reports = () => {
                                                                 {emp.risk}
                                                             </span>
                                                         </td>
-                                                        <td className="p-4 text-right whitespace-nowrap">
+                                                        <td className="p-3 md:p-4 text-right whitespace-nowrap">
                                                             <button
                                                                 onClick={() => setSelectedEmployee(emp)}
-                                                                className="text-primary hover:text-blue-800 font-medium text-sm flex items-center justify-end gap-1 ml-auto"
+                                                                className="text-primary hover:text-blue-800 font-medium text-[0.7rem] md:text-sm flex items-center justify-end gap-1 ml-auto"
                                                             >
-                                                                <Eye className="w-4 h-4" /> Explain
+                                                                <Eye className="w-3.5 h-3.5 md:w-4 md:h-4" /> Explain
                                                             </button>
                                                         </td>
                                                     </tr>
@@ -237,7 +248,7 @@ const Reports = () => {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

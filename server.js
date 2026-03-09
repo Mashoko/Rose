@@ -173,26 +173,14 @@ app.get('/api/reports/:id', async (req, res) => {
 
 // === Historical Data Route ===
 // Accepts optional ?employeeId= to filter records per employee
+// Returns only real records from the database; no demo placeholders.
 app.get('/api/history', async (req, res) => {
     try {
         const { employeeId } = req.query;
         const filter = {};
         if (employeeId) filter.employeeId = employeeId;
         const records = await History.find(filter).sort({ _id: 1 });
-        // if empty, send placeholder sample when no employee specified
-        if (records.length === 0) {
-            if (!employeeId) {
-                return res.json({ data: [
-                    { month: 'Aug 2024', attendance: 4, riskScore: 0.51, status: 'Flagged' },
-                    { month: 'Sep 2024', attendance: 3, riskScore: 0.62, status: 'Flagged' },
-                    { month: 'Oct 2024', attendance: 2, riskScore: 0.74, status: 'Escalated' },
-                    { month: 'Nov 2024', attendance: 0, riskScore: 0.81, status: 'Confirmed Ghost' }
-                ] });
-            }
-            // if filtering by employee and none exist, return empty array
-            return res.json({ data: [] });
-        }
-        res.json({ data: records });
+        return res.json({ data: records });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -250,60 +238,6 @@ app.get('/api/stream/reports', (req, res) => {
         clients = clients.filter(client => client.id !== clientId);
     });
 });
-
-// Seed/Reset Endpoint for Demo
-app.post('/api/seed', async (req, res) => {
-    try {
-        await Employee.deleteMany({});
-        const dummyData = [
-            { employeeId: "HIT001", fullName: "John Doe", department: "Finance", salary: 5000, attendanceDays: 22, biometricLogs: 22, riskLevel: "Low", isGhost: false, anomalyScore: 5, status: "Pending" },
-            { employeeId: "HIT002", fullName: "Jane Smith", department: "IT", salary: 4500, attendanceDays: 0, biometricLogs: 0, riskLevel: "Critical", isGhost: true, anomalyScore: 98, flaggedReasons: ["0% Attendance", "No Academic Workload"], status: "Under Investigation",
-                features: {
-                    attendanceRate: "3.2%",
-                    salaryDeviation: "+145%",
-                    bankAccountDup: 1,
-                    nationalIdDup: 0,
-                    workloadScore: 0.05,
-                    historicalRiskIndex: 0.72,
-                    payrollConsistency: "Low"
-                },
-                modelInfo: {
-                    name: "Isolation Forest",
-                    contamination: 0.05,
-                    prediction: "Anomaly (-1)"
-                },
-                determination: {
-                    classification: "HIGH RISK GHOST EMPLOYEE",
-                    confidence: 92,
-                    reasoning: [
-                        "Attendance rate below institutional minimum threshold (5%)",
-                        "Salary 145% above departmental mean",
-                        "Shares bank account with Tanaka Mashoko",
-                        "No academic workload allocated for 3 consecutive months",
-                        "Previous anomaly record detected (2024-10 Payroll Cycle)"
-                    ]
-                }
-            },
-            { employeeId: "HIT003", fullName: "Robert Brown", department: "Admin", salary: 3000, attendanceDays: 15, biometricLogs: 10, riskLevel: "Medium", isGhost: false, anomalyScore: 45, flaggedReasons: ["Mismatch biometric vs manual"], status: "False Positive" },
-        ];
-        await Employee.insertMany(dummyData);
-        // also seed some historical records
-        await History.deleteMany({});
-        // seed a few history entries tied to specific employees for demo purposes
-        const historySamples = [
-            { employeeId: 'HIT001', month: 'Aug 2024', attendance: 20, riskScore: 0.10, status: 'Normal' },
-            { employeeId: 'HIT001', month: 'Sep 2024', attendance: 22, riskScore: 0.05, status: 'Normal' },
-            { employeeId: 'HIT002', month: 'Aug 2024', attendance: 0, riskScore: 0.98, status: 'Flagged' },
-            { employeeId: 'HIT002', month: 'Sep 2024', attendance: 0, riskScore: 0.99, status: 'Escalated' },
-            { employeeId: 'HIT003', month: 'Aug 2024', attendance: 15, riskScore: 0.40, status: 'Normal' }
-        ];
-        await History.insertMany(historySamples);
-        res.json({ message: "Database seeded with dummy data" });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 
 // Auth Routes
 app.post('/api/auth/login', async (req, res) => {

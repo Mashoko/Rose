@@ -6,6 +6,7 @@ import Analysis from './pages/Analysis';
 import Reports from './pages/Reports';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
+import FingerprintDashboard from './pages/FingerprintDashboard';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
@@ -56,6 +57,14 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Settings />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/fingerprint" element={
+            <ProtectedRoute>
+              <Layout>
+                <FingerprintDashboard />
               </Layout>
             </ProtectedRoute>
           } />

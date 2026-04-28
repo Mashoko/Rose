@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fingerprint enrollments</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #1a1a1a; background: #f4f4f5; }
+    body { margin: 0; padding: 2rem; max-width: 960px; margin-inline: auto; }
+    h1 { font-size: 1.35rem; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    th, td { text-align: left; padding: 0.65rem 1rem; border-bottom: 1px solid #e4e4e7; }
+    th { background: #fafafa; font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: #52525b; }
+    tr:last-child td { border-bottom: none; }
+    .muted { color: #71717a; font-size: 0.875rem; margin-bottom: 1.25rem; }
+    .empty { padding: 2rem; text-align: center; color: #71717a; }
+  </style>
+</head>
+<body>
+  <h1>Registered members</h1>
+  <p class="muted">Users linked to an AS608 template id in MongoDB (<code>employees</code>).</p>
+  {% if users %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Fingerprint ID</th>
+        <th>Employee ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.fullName or "—" }}</td>
+        <td>{{ u.email or "—" }}</td>
+        <td><strong>{{ u.fingerprintId }}</strong></td>
+        <td><code>{{ u.employeeId or "—" }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No enrolled fingerprints yet. Run the bridge with <code>--enroll</code> and complete a capture.</div>
+  {% endif %}
+</body>
+</html>

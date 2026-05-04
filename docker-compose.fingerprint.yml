@@ -1,0 +1,13 @@
+# MongoDB for local Rose + fingerprint Flask API testing.
+# Usage (Docker daemon running):
+#   docker compose -f docker-compose.fingerprint.yml up -d
+# Then:
+#   export MONGO_URI='mongodb://127.0.0.1:27017/rose'
+#   cd fingerprint_module && ./.venv/bin/python run_fingerprint_api.py
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    restart: unless-stopped

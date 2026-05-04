@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "node server.js",
+    "dev:fingerprint-api": "bash -c 'cd fingerprint_module && exec ./.venv/bin/python run_fingerprint_api.py'",
+    "dev:stack": "concurrently -n api,fingerprint,web -c blue,cyan,magenta \"npm run dev:api\" \"npm run dev:fingerprint-api\" \"npm run dev\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -34,6 +37,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.24",
+    "concurrently": "^9.1.2",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

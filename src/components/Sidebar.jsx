@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, BarChart2, FileText, Settings, Users, LogOut, X } from 'lucide-react';
+import { Home, BarChart2, FileText, Settings, Users, LogOut, X, FingerprintPattern } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,6 +10,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         { name: 'Dashboard', path: '/', icon: Home },
         { name: 'Analyze', path: '/analyze', icon: BarChart2 },
         { name: 'Reports', path: '/reports', icon: FileText },
+        { name: 'Fingerprint', path: '/fingerprint', icon: FingerprintPattern },
         { name: 'Settings', path: '/settings', icon: Settings },
     ];
 

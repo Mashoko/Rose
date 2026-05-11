@@ -5,7 +5,11 @@
 async function postBridge(action) {
   let res;
   try {
-    res = await fetch(`/api/fingerprint-bridge/${action}`, { method: 'POST' });
+    const token = localStorage.getItem('token');
+    res = await fetch(`/api/fingerprint-bridge/${action}`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
   } catch (e) {
     return {
       ok: false,

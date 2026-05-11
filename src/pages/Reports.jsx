@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Calendar, Users, AlertTriangle, CheckCircle, Clock, Eye, X } from 'lucide-react';
+import { FileText, Calendar, Users, AlertTriangle, CheckCircle, Clock, Eye, X, Download } from 'lucide-react';
 import clsx from 'clsx';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
 import DetailModal from '../components/DetailModal';
+import { getAuthHeaders } from '../services/api';
 
 const Reports = () => {
     const [reports, setReports] = useState([]);
@@ -18,11 +20,8 @@ const Reports = () => {
     useEffect(() => {
         const fetchReports = async () => {
             try {
-                const token = localStorage.getItem('token');
-                const response = await fetch("http://localhost:5000/api/reports", {
-                    headers: {
-                        ...(token && { "Authorization": `Bearer ${token}` })
-                    }
+                const response = await fetch("/api/reports", {
+                    headers: getAuthHeaders()
                 });
                 if (!response.ok) throw new Error("Failed to fetch reports");
                 const data = await response.json();
@@ -37,17 +36,18 @@ const Reports = () => {
         fetchReports();
     }, []);
 
+    const [exportingId, setExportingId] = useState(null);
+
+    const fetchReportDetails = async (id) => {
+        const response = await fetch(`/api/reports/${id}`, { headers: getAuthHeaders() });
+        if (!response.ok) throw new Error("Failed to fetch report details");
+        return response.json();
+    };
+
     const handleViewReport = async (id) => {
         setIsFetchingDetails(true);
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:5000/api/reports/${id}`, {
-                headers: {
-                    ...(token && { "Authorization": `Bearer ${token}` })
-                }
-            });
-            if (!response.ok) throw new Error("Failed to fetch report details");
-            const data = await response.json();
+            const data = await fetchReportDetails(id);
             setViewingReport(data);
             setViewingReportId(id);
         } catch (err) {
@@ -55,6 +55,51 @@ const Reports = () => {
             alert("Could not load report details.");
         } finally {
             setIsFetchingDetails(false);
+        }
+    };
+
+    const exportToExcel = (report) => {
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1: Summary
+        const summaryRows = [
+            ['Report Name', report.reportName],
+            ['Run Date', new Date(report.date).toLocaleString()],
+            ['Total Analyzed', report.summary?.totalAnalyzed || 0],
+            ['High Risk', report.summary?.highRiskCount || 0],
+            ['Medium Risk', report.summary?.mediumRiskCount || 0],
+            ['Low Risk', report.summary?.lowRiskCount || 0],
+        ];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+
+        // Sheet 2: Employee Details
+        const headers = ['Employee ID', 'Name', 'Department', 'Salary ($)', 'Risk Level', 'Anomaly Score', 'Status'];
+        const detailRows = (report.details || []).map(emp => [
+            emp.id || emp.employeeId || '',
+            emp.name || emp.fullName || '',
+            emp.department || '',
+            emp.salary || 0,
+            emp.risk || '',
+            emp.anomalyScore ?? emp.score ?? '',
+            emp.status || '',
+        ]);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([headers, ...detailRows]), 'Employee Details');
+
+        const safeName = (report.reportName || 'report').replace(/[/\\:*?"<>|]/g, '_');
+        const dateStr = new Date(report.date).toISOString().split('T')[0];
+        XLSX.writeFile(wb, `${safeName}_${dateStr}.xlsx`);
+    };
+
+    const handleExportReport = async (id) => {
+        setExportingId(id);
+        try {
+            const data = await fetchReportDetails(id);
+            exportToExcel(data);
+        } catch (err) {
+            console.error(err);
+            alert("Could not export report.");
+        } finally {
+            setExportingId(null);
         }
     };
 
@@ -145,13 +190,24 @@ const Reports = () => {
                                             </span>
                                         </td>
                                         <td className="p-4 text-right">
-                                            <button
-                                                onClick={() => handleViewReport(report._id)}
-                                                disabled={isFetchingDetails && viewingReportId === report._id}
-                                                className="text-primary hover:text-blue-800 font-medium text-sm bg-blue-50 px-3 py-1.5 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50"
-                                            >
-                                                {isFetchingDetails && viewingReportId === report._id ? 'Loading...' : 'View'}
-                                            </button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => handleViewReport(report._id)}
+                                                    disabled={isFetchingDetails && viewingReportId === report._id}
+                                                    className="text-primary hover:text-blue-800 font-medium text-sm bg-blue-50 px-3 py-1.5 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                                >
+                                                    {isFetchingDetails && viewingReportId === report._id ? 'Loading...' : 'View'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleExportReport(report._id)}
+                                                    disabled={exportingId === report._id}
+                                                    title="Export to Excel"
+                                                    className="flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-medium text-sm bg-emerald-50 px-3 py-1.5 rounded-md hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                                                >
+                                                    <Download className="w-3.5 h-3.5" />
+                                                    {exportingId === report._id ? '...' : 'Excel'}
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -164,13 +220,13 @@ const Reports = () => {
             {/* View Full Report Data Modal Override */}
             <AnimatePresence>
                 {viewingReport && (
-                    <motion.div
+                    <Motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4"
                     >
-                        <motion.div
+                        <Motion.div
                             initial={{ opacity: 0, scale: 0.96, y: 8 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -185,12 +241,20 @@ const Reports = () => {
                                         Run on {new Date(viewingReport.date).toLocaleString()}
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() => { setViewingReport(null); setViewingReportId(null); }}
-                                    className="px-3 md:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center gap-2 text-xs md:text-sm font-medium transition-colors"
-                                >
-                                    <X className="w-4 h-4 md:w-5 md:h-5" /> Close View
-                                </button>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        onClick={() => exportToExcel(viewingReport)}
+                                        className="px-3 md:px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg flex items-center gap-2 text-xs md:text-sm font-medium transition-colors"
+                                    >
+                                        <Download className="w-4 h-4" /> Export Excel
+                                    </button>
+                                    <button
+                                        onClick={() => { setViewingReport(null); setViewingReportId(null); }}
+                                        className="px-3 md:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center gap-2 text-xs md:text-sm font-medium transition-colors"
+                                    >
+                                        <X className="w-4 h-4 md:w-5 md:h-5" /> Close View
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex-1 overflow-auto p-4 md:p-6">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -248,8 +312,8 @@ const Reports = () => {
                                     </div>
                                 </div>
                             </div>
-                        </motion.div>
-                    </motion.div>
+                        </Motion.div>
+                    </Motion.div>
                 )}
             </AnimatePresence>
 

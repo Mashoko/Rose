@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+export const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export const api = axios.create({
     baseURL: API_URL,
@@ -9,13 +14,30 @@ export const api = axios.create({
     },
 });
 
-export const fetchEmployees = async () => {
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+// Fetch employees — returns a plain array for backward compatibility.
+// Pass params like { page, limit, department, risk, search } to use the paginated API.
+// Returns { employees: [], pagination: null } when paginated, or a plain [] when not.
+export const fetchEmployees = async (params = {}) => {
     try {
-        const response = await api.get('/employees');
-        return response.data;
+        const hasPagination = params.page !== undefined || params.limit !== undefined;
+        const response = await api.get('/employees', { params });
+        if (hasPagination && response.data && Array.isArray(response.data.data)) {
+            // Paginated response: { data: [], pagination: {...} }
+            return { employees: response.data.data, pagination: response.data.pagination };
+        }
+        // Plain array — existing callers get a flat array
+        return Array.isArray(response.data) ? response.data : (response.data.data || response.data);
     } catch (error) {
         console.error("Error fetching employees:", error);
-        return null; // Return null to indicate failure (trigger fallback mock data)
+        return null;
     }
 };
 
@@ -64,7 +86,9 @@ export const fetchHistoricalData = async (employeeId) => {
 export const fetchHistoricalDataAsCSV = async (employeeId) => {
     try {
         const params = employeeId ? `?employeeId=${encodeURIComponent(employeeId)}` : '';
-        const response = await fetch(`${API_URL}/history/csv${params}`);
+        const response = await fetch(`${API_URL}/history/csv${params}`, {
+            headers: getAuthHeaders()
+        });
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -76,10 +100,17 @@ export const fetchHistoricalDataAsCSV = async (employeeId) => {
     }
 };
 
-export const downloadHistoricalDataAsCSV = (employeeId, fileName = 'history.csv') => {
+export const downloadHistoricalDataAsCSV = async (employeeId, fileName = 'history.csv') => {
     try {
         const params = employeeId ? `?employeeId=${encodeURIComponent(employeeId)}` : '';
-        const url = `${API_URL}/history/csv${params}`;
+        const response = await fetch(`${API_URL}/history/csv${params}`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
         
         const link = document.createElement('a');
         link.href = url;
@@ -88,6 +119,7 @@ export const downloadHistoricalDataAsCSV = (employeeId, fileName = 'history.csv'
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Error downloading CSV:', error);
         throw error;

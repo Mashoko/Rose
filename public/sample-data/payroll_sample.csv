@@ -1,0 +1,51 @@
+employee_id,name,department,email,phone_number,salary
+EMP001,Tatenda Moyo,Academic Affairs,tatenda.moyo@univ.ac.zw,+263771100001,2800
+EMP002,Rudo Chirwa,Academic Affairs,rudo.chirwa@univ.ac.zw,+263771100002,2600
+EMP003,Simba Nhamo,Academic Affairs,simba.nhamo@univ.ac.zw,+263771100003,2400
+EMP004,Farai Dube,Academic Affairs,farai.dube@univ.ac.zw,+263771100004,3100
+EMP005,Tendai Mupfumu,Academic Affairs,tendai.mupfumu@univ.ac.zw,+263771100005,2200
+EMP006,Justice Munyoro,Academic Affairs,justice.munyoro@univ.ac.zw,+263771100006,2650
+EMP007,Priscilla Dzimiri,Academic Affairs,priscilla.dzimiri@univ.ac.zw,+263771100007,2750
+EMP008,Chipo Mutasa,Finance,chipo.mutasa@univ.ac.zw,+263772200001,1800
+EMP009,Nyarai Madzima,Finance,nyarai.madzima@univ.ac.zw,+263772200002,1500
+EMP010,Kudakwashe Banda,Finance,kuda.banda@univ.ac.zw,+263772200003,1700
+EMP011,Blessing Gumbo,Finance,blessing.gumbo@univ.ac.zw,+263772200004,1600
+EMP012,Tinomuda Chiwara,Finance,tinomuda.chiwara@univ.ac.zw,+263772200005,1550
+EMP013,Tinashe Chigumba,Information Technology,tinashe.chigumba@univ.ac.zw,+263773300001,2200
+EMP014,Tsitsi Maposa,Information Technology,tsitsi.maposa@univ.ac.zw,+263773300002,1900
+EMP015,Admire Chikwanda,Information Technology,admire.chikwanda@univ.ac.zw,+263773300003,2300
+EMP016,Mukudzeyi Pfumbidzai,Information Technology,mukudzeyi.p@univ.ac.zw,+263773300004,2000
+EMP017,Patience Mhende,Human Resources,patience.mhende@univ.ac.zw,+263774400001,1300
+EMP018,Rutendo Sithole,Human Resources,rutendo.sithole@univ.ac.zw,+263774400002,1100
+EMP019,Anesu Mawere,Human Resources,anesu.mawere@univ.ac.zw,+263774400003,1200
+EMP020,Fadzai Mutemeri,Administration,fadzai.mutemeri@univ.ac.zw,+263775500001,1100
+EMP021,Kudzai Mhike,Administration,kudzai.mhike@univ.ac.zw,+263775500002,1050
+EMP022,Tariro Chikuni,Administration,tariro.chikuni@univ.ac.zw,+263775500003,1200
+EMP023,Nhamo Zvobgo,Research,nhamo.zvobgo@univ.ac.zw,+263776600001,2400
+EMP024,Melody Chikwanda,Research,melody.chikwanda@univ.ac.zw,+263776600002,2100
+EMP025,Tafadzwa Mushore,Research,tafadzwa.mushore@univ.ac.zw,+263776600003,2300
+EMP026,Shamiso Nyandoro,Library,shamiso.nyandoro@univ.ac.zw,+263777700001,1000
+EMP027,Takudzwa Mpofu,Library,takudzwa.mpofu@univ.ac.zw,+263777700002,950
+EMP028,Vimbai Ncube,Library,vimbai.ncube@univ.ac.zw,+263777700003,1050
+EMP029,Isheanesu Chigonda,Student Affairs,isheanesu.c@univ.ac.zw,+263778800001,950
+EMP030,Rumbidzai Makwela,Student Affairs,rumbidzai.m@univ.ac.zw,+263778800002,900
+EMP031,Tapiwa Mungate,Student Affairs,tapiwa.mungate@univ.ac.zw,+263778800003,850
+EMP032,Godfrey Mutizwa,Facilities,godfrey.mutizwa@univ.ac.zw,+263779900001,550
+EMP033,Herbert Chimusoro,Facilities,herbert.chimusoro@univ.ac.zw,+263779900002,500
+EMP034,Memory Machava,Facilities,memory.machava@univ.ac.zw,+263779900003,520
+EMP035,Lovemore Chimuti,Facilities,lovemore.chimuti@univ.ac.zw,+263779900004,510
+EMP036,Solomon Murambiwa,Security,solomon.m@univ.ac.zw,+263771110001,480
+EMP037,Douglas Gwata,Security,douglas.gwata@univ.ac.zw,+263771110002,420
+EMP038,Elias Mhanga,Security,elias.mhanga@univ.ac.zw,+263771110003,450
+EMP039,Thomas Mutanda,Security,thomas.mutanda@univ.ac.zw,+263771110004,440
+EMP040,Charity Nyoni,Library,charity.nyoni@univ.ac.zw,+263777700004,980
+EMP041,Grace Zimuto,Student Affairs,grace.zimuto@univ.ac.zw,+263778800004,870
+EMP042,Lilian Musona,Research,lilian.musona@univ.ac.zw,+263776600004,2250
+EMP043,Victor Magaya,Administration,victor.magaya@univ.ac.zw,+263775500004,1150
+EMP044,Sheila Choto,Human Resources,sheila.choto@univ.ac.zw,+263774400004,1250
+EMP045,Ronald Gwenzi,Academic Affairs,ronald.gwenzi@univ.ac.zw,+263771100008,2500
+EMP046,Phantom Director,Finance,blessing.gumbo@univ.ac.zw,+263772299001,7800
+EMP047,Shadow Consultant,Academic Affairs,tatenda.moyo@univ.ac.zw,+263771299002,9200
+EMP048,Absent Supervisor,Administration,,+263775599003,1300
+EMP049,Ghost Technician,Information Technology,ghost.tech@univ.ac.zw,+263773300002,5900
+EMP050,Inactive Clerk,Facilities,inactive.clerk@univ.ac.zw,+263779900001,550

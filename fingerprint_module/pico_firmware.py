@@ -153,41 +153,55 @@ def main_loop() -> None:
 def enroll_fingerprint(employee_id: str, slot: int):
     """
     Guided two-scan enrollment.
-    employee_id: the employeeId string (e.g. "EMP001")
-    slot: AS608 template slot to store the fingerprint (0–162)
+    Polls the sensor in a loop so the process waits as long as needed
+    for the user to place their finger — no fixed delay, no single shot.
     """
-    send_to_bridge("STATUS", f"Place finger on sensor (scan 1/2) for {employee_id}")
-    time.sleep(3)
+    # ── Scan 1: keep polling until a valid image is captured ─────────────────
+    send_to_bridge("STATUS", f"[scan 1/2] Place finger on sensor for {employee_id}")
 
-    # Scan 1 ──────────────────────────────────────────────────────────────────
-    raw = uart_cmd(CMD_GEN_IMG, 200)
-    if not response_ok(raw):
-        send_to_bridge("ERROR", "Scan 1 failed — no finger detected")
+    for _ in range(200):          # up to ~60 s (200 × 300 ms)
+        raw = uart_cmd(CMD_GEN_IMG, 200)
+        if response_ok(raw):
+            break
+        time.sleep_ms(100)
+    else:
+        send_to_bridge("ERROR", "Timeout waiting for finger (scan 1/2) — please try again")
         return
 
     raw = uart_cmd(CMD_IMG2TZ1, 200)
     if not response_ok(raw):
-        send_to_bridge("ERROR", "Scan 1 image conversion failed")
+        send_to_bridge("ERROR", "Scan 1 image conversion failed — try again")
         return
 
-    send_to_bridge("STATUS", "Lift finger, then place again (scan 2/2)")
-    time.sleep(2)
+    # ── Wait for finger removal ───────────────────────────────────────────────
+    send_to_bridge("STATUS", "Remove finger")
+    for _ in range(100):          # up to ~30 s
+        raw = uart_cmd(CMD_GEN_IMG, 200)
+        if not response_ok(raw):
+            break
+        time.sleep_ms(100)
 
-    # Scan 2 ──────────────────────────────────────────────────────────────────
-    raw = uart_cmd(CMD_GEN_IMG, 200)
-    if not response_ok(raw):
-        send_to_bridge("ERROR", "Scan 2 failed — no finger detected")
+    # ── Scan 2: keep polling until a valid image is captured ─────────────────
+    send_to_bridge("STATUS", "[scan 2/2] Place finger on sensor again")
+
+    for _ in range(200):          # up to ~60 s
+        raw = uart_cmd(CMD_GEN_IMG, 200)
+        if response_ok(raw):
+            break
+        time.sleep_ms(100)
+    else:
+        send_to_bridge("ERROR", "Timeout waiting for finger (scan 2/2) — please try again")
         return
 
     raw = uart_cmd(CMD_IMG2TZ2, 200)
     if not response_ok(raw):
-        send_to_bridge("ERROR", "Scan 2 image conversion failed")
+        send_to_bridge("ERROR", "Scan 2 image conversion failed — try again")
         return
 
-    # Create model & store ───────────────────────────────────────────────────
+    # ── Create model & store ─────────────────────────────────────────────────
     raw = uart_cmd(CMD_CREATE, 200)
     if not response_ok(raw):
-        send_to_bridge("ERROR", "Template creation failed — prints did not match")
+        send_to_bridge("ERROR", "Fingerprints did not match — please try again")
         return
 
     if store_template(slot):

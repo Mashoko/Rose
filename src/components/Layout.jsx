@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
-import { Bell, User, Menu } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Layout = ({ children }) => {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const { user } = useAuth();
+
+    const displayName = user?.username || 'User';
+    const displayRole = user?.role || 'Viewer';
+    const avatarLetter = displayName.charAt(0).toUpperCase();
 
     return (
         <div className="min-h-screen bg-background font-sans">
@@ -32,11 +38,12 @@ const Layout = ({ children }) => {
 
                         <div className="flex items-center gap-3 pl-6 border-l border-gray-200">
                             <div className="text-right hidden md:block">
-                                <p className="text-sm font-medium text-gray-900">Admin User</p>
-                                <p className="text-xs text-gray-500">System Auditor</p>
+                                <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                                <p className="text-xs text-gray-500">{displayRole}</p>
                             </div>
-                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center border border-gray-200 text-gray-600">
-                                <User className="w-6 h-6" />
+                            {/* Avatar: initials derived from the logged-in username */}
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 text-primary font-bold text-sm select-none">
+                                {avatarLetter}
                             </div>
                         </div>
                     </div>

@@ -79,6 +79,8 @@ export async function enrollFingerprintViaPicoSerial({
         const line = raw.trim();
         if (!line) continue;
         onLog?.(line);
+        // Yield to the browser so React can render the phase update before the next line.
+        await new Promise(r => setTimeout(r, 0));
 
         if (line.startsWith('ENROLL_SUCCESS:')) {
           const payload = line.slice('ENROLL_SUCCESS:'.length);

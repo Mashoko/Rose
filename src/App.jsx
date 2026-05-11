@@ -7,9 +7,10 @@ import Reports from './pages/Reports';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
 import FingerprintDashboard from './pages/FingerprintDashboard';
+import UserManagement from './pages/UserManagement';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, requiredRole }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -17,6 +18,10 @@ const ProtectedRoute = ({ children }) => {
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -65,6 +70,14 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <FingerprintDashboard />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/users" element={
+            <ProtectedRoute requiredRole="Admin">
+              <Layout>
+                <UserManagement />
               </Layout>
             </ProtectedRoute>
           } />

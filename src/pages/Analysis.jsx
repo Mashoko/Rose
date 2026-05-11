@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { UploadCloud, FileText, CheckCircle, AlertTriangle, Eye, X } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle, AlertTriangle, Eye, X, Download } from 'lucide-react';
 import clsx from 'clsx';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import DetailModal from '../components/DetailModal';
+import { getAuthHeaders } from '../services/api';
 import { Doughnut } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -40,6 +41,22 @@ const LoadingState = () => (
     </div>
 );
 
+const ML_API_URL = import.meta.env.VITE_ML_API_URL || 'http://localhost:8000';
+
+const ALLOWED_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+const validateUploadedFile = (file) => {
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        return `"${file.name}" is not allowed. Only ${ALLOWED_EXTENSIONS.join(', ')} files are accepted.`;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+        return `"${file.name}" exceeds the 10 MB size limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`;
+    }
+    return null;
+};
+
 const Analysis = () => {
     const [step, setStep] = useState(1); // 1: Upload, 2: Processing, 3: Results
     const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -47,14 +64,16 @@ const Analysis = () => {
     const [riskChartData, setRiskChartData] = useState(null);
     const [payrollFile, setPayrollFile] = useState(null);
     const [attendanceFile, setAttendanceFile] = useState(null);
+    const [analysisError, setAnalysisError] = useState(null);
 
     const riskCounts = useMemo(() => {
-        const low = employees.filter(e => e.risk === 'Low').length;
-        const medium = employees.filter(e => e.risk === 'Medium').length;
-        const high = employees.filter(e => e.risk === 'High' || e.risk === 'Critical').length;
-        const total = employees.length;
-        const highPct = total ? Math.round((high / total) * 100) : 0;
-        return { low, medium, high, total, highPct };
+        const low      = employees.filter(e => e.risk === 'Low').length;
+        const medium   = employees.filter(e => e.risk === 'Medium').length;
+        const high     = employees.filter(e => e.risk === 'High').length;
+        const critical = employees.filter(e => e.risk === 'Critical').length;
+        const total    = employees.length;
+        const highPct  = total ? Math.round(((high + critical) / total) * 100) : 0;
+        return { low, medium, high, critical, total, highPct };
     }, [employees]);
 
     const doughnutCenterPlugin = useMemo(() => ({
@@ -113,13 +132,11 @@ const Analysis = () => {
                 details: mappedData
             };
 
-            const token = localStorage.getItem('token'); // Grab token if it exists
-
-            await fetch("http://localhost:5000/api/reports", {
+            await fetch("/api/reports", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(token && { "Authorization": `Bearer ${token}` })
+                    ...getAuthHeaders()
                 },
                 body: JSON.stringify(payload),
             });
@@ -130,10 +147,18 @@ const Analysis = () => {
     };
 
     const handleAnalyze = async () => {
+        setAnalysisError(null);
+
         if (!payrollFile || !attendanceFile) {
-            alert("Please upload both Payroll and Attendance files.");
+            setAnalysisError("Please upload both a Payroll file and an Attendance file before running analysis.");
             return;
         }
+
+        const payrollErr = validateUploadedFile(payrollFile);
+        if (payrollErr) { setAnalysisError(payrollErr); return; }
+
+        const attendanceErr = validateUploadedFile(attendanceFile);
+        if (attendanceErr) { setAnalysisError(attendanceErr); return; }
 
         setStep(2);
 
@@ -142,7 +167,7 @@ const Analysis = () => {
         formData.append("attendance_file", attendanceFile);
 
         try {
-            const response = await fetch("http://localhost:8000/analyze", {
+            const response = await fetch(`${ML_API_URL}/analyze`, {
                 method: "POST",
                 body: formData,
             });
@@ -164,22 +189,33 @@ const Analysis = () => {
 
                 setAnalysisResults(mappedData);
 
-                // Prepare pie chart data showing risk distribution
-                const lowCount = mappedData.filter(e => e.risk === 'Low').length;
-                const mediumCount = mappedData.filter(e => e.risk === 'Medium').length;
-                const highCount = mappedData.filter(e => e.risk === 'High').length;
+                // Prepare pie chart data showing risk distribution (all 4 tiers)
+                const lowCount      = mappedData.filter(e => e.risk === 'Low').length;
+                const mediumCount   = mappedData.filter(e => e.risk === 'Medium').length;
+                const highCount     = mappedData.filter(e => e.risk === 'High').length;
+                const criticalCount = mappedData.filter(e => e.risk === 'Critical').length;
+
+                // Only include Critical segment when the ML service actually returns it
+                const chartLabels = ['Normal (Low)', 'Suspicious (Medium)', 'Ghost (High)'];
+                const chartData   = [lowCount, mediumCount, highCount];
+                const chartColors = [
+                    'rgba(34, 197, 94, 0.85)',   // Green
+                    'rgba(234, 179, 8, 0.85)',   // Yellow
+                    'rgba(239, 68, 68, 0.85)',   // Red
+                ];
+                if (criticalCount > 0) {
+                    chartLabels.push('Critical (Ghost)');
+                    chartData.push(criticalCount);
+                    chartColors.push('rgba(126, 34, 206, 0.85)'); // Purple
+                }
 
                 setRiskChartData({
-                    labels: ['Normal (Low Risk)', 'Suspicious (Medium Risk)', 'Ghosts (High Risk)'],
+                    labels: chartLabels,
                     datasets: [
                         {
                             label: 'Employee Count',
-                            data: [lowCount, mediumCount, highCount],
-                            backgroundColor: [
-                                'rgba(34, 197, 94, 0.85)',   // Green
-                                'rgba(234, 179, 8, 0.85)',   // Yellow
-                                'rgba(239, 68, 68, 0.85)'    // Red
-                            ],
+                            data: chartData,
+                            backgroundColor: chartColors,
                             borderWidth: 0,
                             spacing: 3,
                             hoverOffset: 8,
@@ -193,12 +229,12 @@ const Analysis = () => {
 
                 setStep(3);
             } else {
-                alert("Error processing file: " + result.error);
+                setAnalysisError(`Analysis failed: ${result.error || 'The ML service returned an unexpected response.'}`);
                 setStep(1);
             }
         } catch (error) {
-            console.error("Error:", error);
-            alert("Failed to connect to the server.");
+            console.error("Analysis error:", error);
+            setAnalysisError("Could not reach the ML service. Make sure it is running on the configured URL and try again.");
             setStep(1);
         }
     };
@@ -208,11 +244,50 @@ const Analysis = () => {
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-900">Analysis & Detection</h1>
                 {step === 3 && (
-                    <button onClick={() => { setStep(1); setPayrollFile(null); setAttendanceFile(null); }} className="text-sm text-primary hover:underline">
+                    <button onClick={() => { setStep(1); setPayrollFile(null); setAttendanceFile(null); setAnalysisError(null); }} className="text-sm text-primary hover:underline">
                         Start New Analysis
                     </button>
                 )}
             </div>
+
+            {/* Inline error banner — replaces disruptive alert() calls */}
+            {analysisError && (
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div className="flex-1 text-sm">{analysisError}</div>
+                    <button onClick={() => setAnalysisError(null)} className="text-red-400 hover:text-red-700 shrink-0">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+
+            {/* Sample data download banner */}
+            {step === 1 && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="flex-1">
+                        <p className="text-sm font-semibold text-blue-900">Need test data?</p>
+                        <p className="text-xs text-blue-600 mt-0.5">
+                            Download our sample payroll &amp; attendance files — 50 employees with planted ghost employee patterns ready to analyse.
+                        </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                        <a
+                            href="/sample-data/payroll_sample.csv"
+                            download="payroll_sample.csv"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-50 transition-colors shadow-sm"
+                        >
+                            <Download className="w-3.5 h-3.5" /> Payroll CSV
+                        </a>
+                        <a
+                            href="/sample-data/attendance_sample.csv"
+                            download="attendance_sample.csv"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-50 transition-colors shadow-sm"
+                        >
+                            <Download className="w-3.5 h-3.5" /> Attendance CSV
+                        </a>
+                    </div>
+                </div>
+            )}
 
             {/* Step 1: Upload */}
             {step === 1 && (
@@ -288,8 +363,13 @@ const Analysis = () => {
                                     Medium: {riskCounts.medium}
                                 </span>
                                 <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-700 border border-red-500/20">
-                                    High (Ghost): {riskCounts.high}
+                                    High: {riskCounts.high}
                                 </span>
+                                {riskCounts.critical > 0 && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-700 border border-purple-500/20">
+                                        Critical: {riskCounts.critical}
+                                    </span>
+                                )}
                                 <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-700 border border-slate-500/20">
                                     Total: {riskCounts.total}
                                 </span>

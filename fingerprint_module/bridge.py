@@ -21,7 +21,7 @@ import glob
 import os
 import sys
 import time
-from pathlib import Path
+from pathlib import Path  # noqa: F401 – used in _load_service_key
 
 import requests
 import serial
@@ -34,14 +34,35 @@ if str(_ROOT) not in sys.path:
 from common.employee_id import stable_employee_id
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-# Major step: Flask fingerprint service (not the Express /api prefix)
-API_BASE = os.environ.get("FINGERPRINT_API_BASE", "http://127.0.0.1:5001").rstrip("/")
-# Legacy Rose Express API (optional second-line enroll without Flask body)
-LEGACY_API = os.environ.get("ROSE_API_URL", "http://127.0.0.1:5000/api").rstrip("/")
+# Express API is the single source of truth for attendance and enrollment in MongoDB.
+EXPRESS_API = os.environ.get("ROSE_API_URL", "http://127.0.0.1:5000/api").rstrip("/")
+# Flask fingerprint service (only used for /register_user in interactive --enroll mode)
+FLASK_API  = os.environ.get("FINGERPRINT_API_BASE", "http://127.0.0.1:5001").rstrip("/")
+# Legacy alias kept for backward compat
+LEGACY_API = EXPRESS_API
 
 BAUD_RATE = 115_200
 TIMEOUT = 1
 RETRY_LIMIT = 3
+
+
+def _load_service_key() -> str:
+    """Read INTERNAL_SERVICE_API_KEY from the environment or from the project root .env file."""
+    key = os.environ.get("INTERNAL_SERVICE_API_KEY", "")
+    if key:
+        return key
+    env_file = Path(__file__).resolve().parents[1] / ".env"
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("INTERNAL_SERVICE_API_KEY="):
+                return line.split("=", 1)[1].strip()
+    except (OSError, IndexError):
+        pass
+    return ""
+
+
+SERVICE_KEY = _load_service_key()
 
 # Major step: pending interactive enroll — filled when user runs ``--enroll`` with prompts
 _pending_enroll: dict | None = None
@@ -51,10 +72,12 @@ _pending_enroll: dict | None = None
 
 def detect_pico_port() -> str | None:
     """Return the first likely Pico W serial port, or None."""
+    # On Windows, scan COM1–COM20; on Linux/Mac, check ttyACM/usbmodem
+    windows_ports = [f"COM{i}" for i in range(1, 21)]
     candidates = (
         glob.glob("/dev/ttyACM*")
         + glob.glob("/dev/tty.usbmodem*")
-        + ["COM3", "COM4", "COM5"]
+        + windows_ports
     )
     for port in candidates:
         try:
@@ -68,15 +91,34 @@ def detect_pico_port() -> str | None:
 
 # ── HTTP helpers (Flask API) ─────────────────────────────────────────────────
 
+def _service_headers() -> dict:
+    """Return headers for Express service-to-service calls."""
+    h = {"Content-Type": "application/json"}
+    if SERVICE_KEY:
+        h["x-service-token"] = SERVICE_KEY
+    return h
+
+
 def post_register_user(name: str, email: str, fingerprint_id: int) -> None:
-    """Major step: persist new member after successful template storage on the AS608."""
+    """Persist new member after successful template storage (Flask register_user, then link to MongoDB)."""
     body = {"name": name, "email": email, "fingerprint_id": fingerprint_id}
     for attempt in range(1, RETRY_LIMIT + 1):
         try:
-            r = requests.post(f"{API_BASE}/register_user", json=body, timeout=10)
+            r = requests.post(f"{FLASK_API}/register_user", json=body, timeout=10)
             data = r.json() if r.text else {}
             if r.status_code == 201:
-                print(f"  ✔  Registered: {data.get('user', {}).get('fullName', name)}")
+                print(f"  ✔  Registered in Flask: {data.get('user', {}).get('fullName', name)}")
+                # Also link to MongoDB employee by email
+                link_r = requests.patch(
+                    f"{EXPRESS_API}/employees/enroll-fingerprint-by-email",
+                    json={"email": email, "fingerprintId": fingerprint_id},
+                    headers=_service_headers(),
+                    timeout=5,
+                )
+                if link_r.ok:
+                    print(f"  ✔  Linked to MongoDB employee ({email})")
+                else:
+                    print(f"  ⚠  MongoDB link failed ({link_r.status_code}) — employee may not exist in HR data yet")
             elif r.status_code == 409:
                 print(f"  ✘  Conflict: {data.get('error')}")
             else:
@@ -89,17 +131,20 @@ def post_register_user(name: str, email: str, fingerprint_id: int) -> None:
 
 
 def post_attendance(fingerprint_id: int) -> None:
-    """Major step: existing member scan → mark present in MongoDB via Flask."""
+    """Mark attendance in MongoDB via Express API (service token auth)."""
     for attempt in range(1, RETRY_LIMIT + 1):
         try:
             r = requests.post(
-                f"{API_BASE}/attendance/scan",
-                json={"fingerprint_id": fingerprint_id},
+                f"{EXPRESS_API}/attendance/scan",
+                json={"fingerprintId": fingerprint_id},
+                headers=_service_headers(),
                 timeout=5,
             )
             data = r.json() if r.text else {}
             if r.ok:
-                print(f"  ✔  {data.get('message', 'OK')}")
+                emp = data.get("employee", {})
+                name = emp.get("fullName") or emp.get("employeeId", str(fingerprint_id))
+                print(f"  ✔  {data.get('message', f'Attendance marked for {name}')}")
             else:
                 print(f"  ✘  Server error ({r.status_code}): {data.get('error')}")
             return
@@ -110,17 +155,18 @@ def post_attendance(fingerprint_id: int) -> None:
 
 
 def patch_enroll_legacy(employee_id: str, fingerprint_id: int) -> None:
-    """Optional: link template to an existing Express ``employeeId`` (no name/email on Flask)."""
+    """Link template to an existing Express employeeId via PATCH (no Flask body needed)."""
     for attempt in range(1, RETRY_LIMIT + 1):
         try:
             r = requests.patch(
-                f"{LEGACY_API}/employees/enroll-fingerprint",
+                f"{EXPRESS_API}/employees/enroll-fingerprint",
                 json={"employeeId": employee_id, "fingerprintId": fingerprint_id},
+                headers=_service_headers(),
                 timeout=5,
             )
             data = r.json() if r.text else {}
             if r.ok:
-                print(f"  ✔  Enrolled (legacy API): {data.get('message', 'OK')}")
+                print(f"  ✔  Enrolled in MongoDB: {data.get('message', 'OK')}")
             elif r.status_code == 409:
                 print(f"  ✘  Conflict: {data.get('error')}")
             else:
@@ -236,7 +282,9 @@ def main() -> None:
         sys.exit(1)
 
     print(f"Connecting to Pico W on {port} at {BAUD_RATE} baud…")
-    print(f"Flask API: {API_BASE}  |  Legacy Express: {LEGACY_API}")
+    print(f"Express API (attendance + enrollment): {EXPRESS_API}")
+    print(f"Flask API (interactive register_user):  {FLASK_API}")
+    print(f"Service key loaded: {'yes' if SERVICE_KEY else 'NO — set INTERNAL_SERVICE_API_KEY in .env'}")
     try:
         ser = serial.Serial(port, BAUD_RATE, timeout=TIMEOUT)
     except serial.SerialException as e:

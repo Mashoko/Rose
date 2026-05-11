@@ -30,7 +30,15 @@ const EmployeeSchema = new mongoose.Schema({
         confidence: Number,
         reasoning: [String]
     },
-    status: { type: String, enum: ['Pending', 'Under Investigation', 'False Positive', 'Confirmed Ghost'], default: 'Pending' }
+    status: { type: String, enum: ['Pending', 'Under Investigation', 'False Positive', 'Confirmed Ghost'], default: 'Pending' },
+
+    // HR / payroll fields — populated when data is loaded from CSV or HR system
+    dateEmployed:      Date,
+    bankAccount:       String,
+    nationalId:        { type: String, sparse: true },
+    contractType:      { type: String, enum: ['Full-Time', 'Part-Time', 'Contract', 'Temporary'] },
+    payrollFrequency:  { type: String, enum: ['Monthly', 'Bi-Weekly', 'Weekly'], default: 'Monthly' },
+    employmentStatus:  { type: String, enum: ['Active', 'Inactive', 'Terminated', 'On Leave'], default: 'Active' }
 }, { timestamps: true });
 
 const Employee = mongoose.model('Employee', EmployeeSchema);
